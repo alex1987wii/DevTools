@@ -1,0 +1,35 @@
+/*
+ *  Name:    uniconsole.rc
+ *
+ *  Purpose: Resource definitions for Unication Dev Tools
+ *
+ *  UNICATION CO. LTD. PROPRIETARY INFORMATION
+ *
+ *  SECURITY LEVEL - HIGHLY CONFIDENTIAL
+ *
+ *  DO NOT COPY
+ *
+ *  This document and the information contained in it is confidential and
+ *  proprietary to Unication Co., Ltd. The reproduction or disclosure in
+ *  whole or in part, to anyone outside of Unication Co., Ltd. without the
+ *  written approval of the President of Unication Co., Ltd., under a
+ *  Non-Disclosure Agreement, or to any employee of Unication Co. Ltd. who
+ *  has not previously obtained written authorization for access from the
+ *  individual responsible for the document, will have a significant
+ *  detrimental effect on Unication Co., Ltd. and is expressly prohibited.
+ *
+ *  Copyright (c) $Date: 2015/02/06 06:10:16 $ Unication Co., Ltd.
+ *
+ *  All rights reserved
+ */
+#include "devToolsRes.h"
+
+#if defined DEVELOPMENT
+IDI_ICON    ICON    DISCARDABLE    "devTools.ico"
+#elif defined MAINTAINMENT
+IDI_ICON    ICON    DISCARDABLE    "MaintainTools.ico"
+#elif defined PRODUCTION
+IDI_ICON    ICON    DISCARDABLE    "production.ico"
+#elif defined IQCAPTURE
+IDI_ICON    ICON    DISCARDABLE    "capture.ico"
+#endif

@@ -90,7 +90,15 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 /*user message definition which is not conflict with "devToolsUI_private.h"*/
 #define WM_CREATE_PROGRESS_BAR		(WM_USER+110)
 #define WM_DESTROY_PROGRESS_BAR		(WM_USER+111)
-#define WM_ERROR					(WM_USER+112)
+#define WM_CREATE_PARTITION_LIST	(WM_USER+112)
+#define WM_DESTROY_PARTITION_LIST	(WM_USER+113)
+#define WM_ERROR					(WM_USER+114)
+#define WM_INVOKE_CALLBACK			(WM_USER+115)
+/*****************TIMER ID********************/
+#define TIMER_DYNAMIC_INFO			1
+
+#define DISABLE						0
+#define ENABLE						1
 
 /*stage for progress_reply_status_get  */
 #define PROGRESS_STATUS_PREPARING     (0)
@@ -102,7 +110,7 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define MAX_STATUS					(6)
 	
 #if defined DEVELOPMENT
-#define DEV_TOOLS_NUMBER        4           /* Unication dev tools have three utilities */
+#define DEV_TOOLS_NUMBER        3           /* Unication dev tools have three utilities */
 #elif defined MAINTAINMENT
 #define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
 #elif defined PRODUCTION
@@ -143,7 +151,6 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define WIDTH_EDIT1             135
 
 
-
 #define WIDTH_BUTTON_NANDFLASH_PROGRAM 110
 
 
@@ -159,11 +166,12 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define WIN_COMBO_OFFSET        (10)
 
 
-
-
 /********************************************************************************/
-#if (defined(CONFIG_PROJECT_U3) || defined(CONFIG_PROJECT_U3_2ND))
+#if (defined(CONFIG_PROJECT_U3))
 #define PROJECT			"U3"
+#define U3_LIB
+#elif defined(CONFIG_PROJECT_U3_2ND)
+#define PROJECT			"U3_2ND"
 #define U3_LIB
 #elif defined CONFIG_PROJECT_U4
 #define PROJECT			"U4"
@@ -172,10 +180,19 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #elif defined CONFIG_PROJECT_G4_BBA
 #define PROJECT			"G4_BBA"
 #elif defined CONFIG_PROJECT_BR01_2ND
-#define PROJECT			"BR01_2nd"
+#define PROJECT			"BR01_2ND"
 #elif defined CONFIG_PROJECT_M2
 #define PROJECT			"M2"
-
+#elif defined CONFIG_PROJECT_AD6900_BBA
+#define PROJECT			"AD6900_BBA"
+#elif defined CONFIG_PROJECT_BR01
+#define PROJECT			"BR01"
+#elif defined CONFIG_PROJECT_G4_BBA_V2
+#define PROJECT			"G4_BBA_V2"
+#elif defined CONFIG_PROJECT_U4_BBA
+#define PROJECT			"U4_BBA"
+#elif defined CONFIG_PROJECT_REPEATER_BBA
+#define PROJECT			"REPEATER_BBA"
 #else
 	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
 #endif
@@ -184,35 +201,18 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 static char partition_name[UNI_MAX_PARTITION][UNI_MAX_PARTITION_NAME_LEN];
 static int total_partition = 0;
 static int cbs_per_line = 0;
-static BOOL get_image_info(const char*image)
-{
-	FILE *fp = fopen(image,"rb");
-	if(fp == NULL)
-		return FALSE;
-	uni_image_header_t image_header;
-		
-	if(1 != fread(&image_header,sizeof(uni_image_header_t),1,fp))
-	{
-		fclose(fp);
-		return FALSE;
-	}
-	fclose(fp);
-	total_partition = image_header.total_partitions;
-	int i;
-	for(i = 0; i < total_partition; ++i)
-	{
-		printf("image_header.partition[%d].partition_name = %s\n",i,partition_name[i]);
-		memcpy(partition_name[i],image_header.partition[i].partition_name,UNI_MAX_PARTITION_NAME_LEN);
-		printf("partition[%d] = %s\n",i,partition_name[i]);
-	}
-	cbs_per_line = total_partition/2;
-	return TRUE;
-}
 
 static HWND hwndPartitionCheckBox[UNI_MAX_PARTITION] = {NULL,};
 int partition_x_pos = 0;
 int partition_y_pos = 0;
 
+#define IP_MAX			4
+const char *ip_addr[IP_MAX] = {
+	"10.10.0.12",
+	"10.10.12.11",
+	"10.10.12.21",
+	"10.10.12.22"
+};
 
 /*********************Tab Select ID****************************/
 #define SELECT_LINUX_PROGRAMMING		0
@@ -239,26 +239,45 @@ static int burn_mode = SELECT_LINUX_PROGRAMMING;
 #elif defined(MAINTAINMENT)
 #define APP_TITLE          "Unication Maintenance Tools"
 static const char *ini_file = "for_user_file.ini";
+static const int burn_mode = SELECT_LINUX_PROGRAMMING;
 #elif defined(PRODUCTION)
 #define APP_TITLE          "Unication NandFlash Programmer"
 static const char *ini_file = "for_mfg_file.ini";
+static const int burn_mode = SELECT_MFG_PROGRAMMING;
 #endif
 
 #define UNI_APP_MUTEX      "Unication Dev Tools"
-typedef void (*background_func)(void);
+typedef int (*background_func)(void );
+
+
+static background_func g_background_func = NULL;/*INVOKE by BackGroundThread*/
+//static void *g_background_arg = NULL;
+#define ERROR_INFO_MAX			256
+static TCHAR error_info[ERROR_INFO_MAX];//storage error information
+static TCHAR error_msg[ERROR_INFO_MAX];//storage error message
+
 typedef void (*complete_func)(int retval,void *private_data);
-static background_func g_background_func = NULL;
-static BOOL g_transfer_complete = FALSE;
-static complete_func g_complete_func = NULL;
+static complete_func g_complete_func = NULL;/*INVOKE by WM_INVOKE_CALLBACK*/
 static void *g_complete_private_data = NULL;
+
+static BOOL g_transfer_complete = FALSE;
 static int g_locking = 0;
+static BOOL g_processing = FALSE;
 static int g_retval = 0;
-static char work_path[MAX_PATH];
+static int partition_selected = 0;
+static BOOL g_on_batch = FALSE;
+#define IS_LISTENING_ON_NOTHING   (0)
+#define IS_LISTENING_ON_MFG       (1)
+#define IS_LISTENING_ON_SPL       (2)
+
+static int listening_on = IS_LISTENING_ON_NOTHING;
+
+static char work_path[MAX_PATH];/*the path for this program*/
+
 
 static HANDLE g_event = NULL;    // event
-static HANDLE g_event_wait = NULL;    // event
+static HANDLE g_hBackGround = NULL;
 static HANDLE g_hTransfer = NULL;
-static HANDLE g_h_wait = NULL;
 
 TCHAR szAppName[] = TEXT(APP_TITLE);
 
@@ -294,48 +313,62 @@ static RECT rcClient; // rcClient.right, rcClient.bottom
 
 typedef struct _ini_file_info
 {
-    char ip[16]; // xxx.xxx.xxx.xxx
+	int ip_should_flash;
+    char ip[4][16]; // xxx.xxx.xxx.xxx
     char name_of_image[MAX_PATH];
+	char name_of_rescue_image[MAX_PATH];
 } ini_file_info_t;
 
 static ini_file_info_t ini_file_info;
-static void *image_buffer = NULL;
+
+static int image_length = 0;
+
+static HWND    hwndDynamic = NULL;
+static const char *dynamic_info = NULL;
+
+#define CLEAR_INFO()	do{SetWindowText(hwndInfo,"");SetWindowText(hwndIpInfo,"");}while(0)
+/************************General Handler Declaration********************/
+static HWND    hwndInfo,hwndIpInfo,hwndProcessInfo,hwndStaticBrowser,hwndBtnBrowser,hwndBtnDown;
+
 /**********************Linux Handler Declaration*************************/
 static HWND    hwndLinPage;
 static HWND    hwndLinGroupReadme;
-static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticNotice;
+static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticIpInfo,hwndLinProcessInfo,hwndLinStaticNotice;
 
-static HWND    hwndLinIpAddr,hwndLinDevList,hwndLinBtnRefresh;/*for Br01*/
+static HWND    hwndLinStaticDev,hwndLinComboDevList,hwndLinBtnRefresh,hwndLinBtnReset;/*for Br01*/
 static HWND    hwndLinGroupOptions;
-/*not used now
-static HWND    hwndEditBrowser;
-*/
-static HWND    hwndLinBtnCheckImg,hwndLinBtnDown,hwndBtnEnableTelnet;
+
+static HWND    hwndLinStaticImg;
+static HWND    hwndLinStaticBrowser;
+
+static HWND    hwndLinBtnBrowser,hwndLinBtnDown,hwndBtnEnableTelnet;
 static HWND    hwndCheckBoxDelete,hwndCheckBoxSkipBatCheck;
 
 
 /**********************SPL Handler Declaration*************************/
 static HWND    hwndSPLPage;
 static HWND    hwndSPLGroupReadme;
-static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticNotice;
+static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticIpInfo,hwndSPLProcessInfo,hwndSPLStaticNotice;
 
-static HWND    hwndSPLIpAddr,hwndSPLDevList,hwndSPLBtnRefresh;/*for Br01*/
+//static HWND    hwndSPLIpAddr,hwndSPLDevList,hwndSPLBtnRefresh;/*for Br01*/
 static HWND    hwndSPLGroupOptions;
-
-static HWND    hwndSPLBtnCheckImg,hwndSPLBtnDown,hwndSPLBtnStop;
+static HWND    hwndSPLStaticImg;
+static HWND    hwndSPLStaticBrowser;
+static HWND    hwndSPLBtnBrowser,hwndSPLBtnDown,hwndSPLBtnStop;
 //static HWND    hwndCheckBoxSkipBatCheck;
 
 /**********************MFG Handler Declaration*************************/
 
 static HWND    hwndMFGPage;
 static HWND    hwndMFGGroupReadme;
-static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticNotice;
+static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticIpInfo,hwndMFGProcessInfo,hwndMFGStaticNotice;
 
-static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
+//static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
 static HWND    hwndMFGGroupOptions;
 
-
-static HWND    hwndMFGBtnCheckImg,hwndMFGBtnDown,hwndMFGBtnStop;
+static HWND    hwndMFGStaticImg;
+static HWND    hwndMFGStaticBrowser;
+static HWND    hwndMFGBtnBrowser,hwndMFGBtnDown,hwndMFGBtnStop;
 static HWND    hwndCheckBoxBatch;
 
 /**********************File Transfer Handler Declaration*************************/
@@ -354,7 +387,10 @@ static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
  */
 
 LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
-
+/*
+ * return 1 check 0 not check
+ */
+#define CHECKBOX_IS_CLICK(x)  (Button_GetCheck(x) == BST_CHECKED)
 
 #ifdef ENABLE_DEBUG
 /*
@@ -374,8 +410,7 @@ BOOL InitDebugConsole( void )
 	if( !AllocConsole() )
     {      
         return FALSE;
-    }
-    
+    }    
     /* redirect stdout and stdin to console out and console in */
     freopen(TEXT("CONOUT$"),TEXT("w"), stdout);
     freopen(TEXT("CONIN$"), TEXT("r"), stdin);
@@ -414,21 +449,83 @@ void ExitDebugConsole( void )
 
 #endif
 
-#ifdef DEVELOPMENT
+static inline void reset_general_handler(int select)
+{
+	switch(select)
+	{
+		case SELECT_LINUX_PROGRAMMING:
+		hwndInfo = hwndLinStaticInfo;
+		hwndIpInfo = hwndLinStaticIpInfo;
+		hwndProcessInfo = hwndLinProcessInfo;
+		hwndStaticBrowser = hwndLinStaticBrowser;
+		hwndBtnDown = hwndLinBtnDown;
+		break;
+		case SELECT_SPL_PROGRAMMING:
+		hwndInfo = hwndSPLStaticInfo;
+		hwndIpInfo = hwndSPLStaticIpInfo;
+		hwndProcessInfo = hwndSPLProcessInfo;
+		hwndStaticBrowser = hwndSPLStaticBrowser;
+		hwndBtnDown = hwndSPLBtnDown;
+		break;
+		case SELECT_MFG_PROGRAMMING:
+		hwndInfo = hwndMFGStaticInfo;
+		hwndIpInfo = hwndMFGStaticIpInfo;
+		hwndProcessInfo = hwndMFGProcessInfo;
+		hwndStaticBrowser = hwndMFGStaticBrowser;
+		hwndBtnDown = hwndMFGBtnDown;
+		break;
+		case SELECT_FILE_TRANSFER:
+		break;
+	}
+}
+static inline void SetDynamicInfo(const char *info)
+{
+	hwndDynamic = hwndInfo;
+	dynamic_info = info;
+	SetWindowText(hwndDynamic,info);/*show the initial information*/
+	SetTimer(hwndMain,TIMER_DYNAMIC_INFO,500,NULL);/*update every half second*/
+}
+static inline void StopDynamicInfo()
+{
+	KillTimer(hwndMain,TIMER_DYNAMIC_INFO);
+}
+
 static inline void CreatePartitionList(void)
 {
 	//create partition box
 	int i;
+	HWND hwndPage;
+	switch(burn_mode)
+	{
+		case SELECT_LINUX_PROGRAMMING:
+		hwndPage = hwndLinPage;
+		break;
+		case SELECT_SPL_PROGRAMMING:
+		hwndPage = hwndSPLPage;
+		break;
+		case SELECT_MFG_PROGRAMMING:
+		hwndPage = hwndMFGPage;
+		break;
+	}
 	for(i = 0; i < total_partition; ++i)
 	{
 		hwndPartitionCheckBox[i] = CreateWindow(TEXT("button"),
 		partition_name[i],
 		WS_CHILD | BS_AUTOCHECKBOX | WS_VISIBLE,
-		partition_x_pos + (i%cbs_per_line)*(WIDTH_CHECKBOX+15) + X_MARGIN,
+		partition_x_pos + (i%cbs_per_line)*(WIDTH_CHECKBOX) + X_MARGIN,
 		partition_y_pos + (i/cbs_per_line)*HEIGHT_CONTROL + Y_MARGIN,
 		WIDTH_CHECKBOX, HEIGHT_CONTROL,
-		hwndLinPage,NULL,
+		hwndPage,NULL,
 		hInst,NULL);		
+	}
+}
+static inline void DestoryPartitionList(void)
+{
+	int i;
+	for(i = 0; i < total_partition; ++i)
+	{		
+		DestroyWindow(hwndPartitionCheckBox[i]);
+		hwndPartitionCheckBox[i] = NULL;			
 	}
 }
 static inline void ShowPartitionList(BOOL enable)
@@ -447,8 +544,122 @@ static inline void EnablePartitionList(BOOL enable)
 		EnableWindow(hwndPartitionCheckBox[i],enable);
 	}
 }
-#endif
 
+void update_ui_resources(int enable)
+{	
+	/*BtnDown enable if error occurs,but disable by reset_ui_resources when successfully complete*/
+	switch(burn_mode)
+	{
+		case SELECT_LINUX_PROGRAMMING:		
+		EnableWindow(hwndLinBtnBrowser,enable);
+		EnableWindow(hwndLinBtnDown,enable);
+		EnableWindow(hwndLinBtnRefresh,enable);
+		EnableWindow(hwndCheckBoxDelete,enable);
+		EnableWindow(hwndBtnEnableTelnet,enable);
+		EnableWindow(hwndCheckBoxSkipBatCheck,enable);
+		
+#ifdef DEVELOPMENT
+		EnableWindow(hwndLinPage,enable);
+		EnablePartitionList(enable);		
+#endif
+		break;
+		case SELECT_SPL_PROGRAMMING:		
+		EnableWindow(hwndSPLBtnBrowser,enable);		
+		EnableWindow(hwndSPLBtnDown,enable);
+		
+#ifdef DEVELOPMENT
+		EnableWindow(hwndSPLPage,enable);
+		EnablePartitionList(enable);
+		
+#endif		
+		break;
+		case SELECT_MFG_PROGRAMMING:		
+		EnableWindow(hwndMFGBtnBrowser,enable);		
+		EnableWindow(hwndMFGBtnDown,enable);
+		EnableWindow(hwndCheckBoxBatch,enable);
+#ifdef DEVELOPMENT
+		EnableWindow(hwndMFGPage,enable);
+		EnablePartitionList(enable);		
+#endif			
+		break;
+		case SELECT_FILE_TRANSFER:		
+		break;
+	}
+#ifdef DEVELOPMENT
+	EnableWindow(hwndTab,enable);
+#endif
+}
+/*reset ui page into initial status when image download complete*/
+
+static inline void reset_ui_resources(int page)
+{	
+	switch(page)
+	{
+		case SELECT_LINUX_PROGRAMMING:
+		EnableWindow(hwndLinBtnDown,FALSE);
+		break;
+		case SELECT_SPL_PROGRAMMING:
+		EnableWindow(hwndSPLBtnDown,FALSE);		
+		break;
+		case SELECT_MFG_PROGRAMMING:
+		EnableWindow(hwndMFGBtnDown,FALSE);		
+		break;
+		case SELECT_FILE_TRANSFER:
+		EnableWindow(hwndFdButtonDownload,FALSE);
+		EnableWindow(hwndFuButtonUpload,FALSE);
+		break;
+		default:
+		UI_DEBUG("Invalid page");
+		break;
+	}	
+}
+
+static BOOL get_image_info(const char*image)
+{
+	char image_type[UNI_MAX_REL_VERSION_LEN];
+	FILE *fp = fopen(image,"rb");
+	if(fp == NULL)
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
+		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit,check your image if it's in current work path.",image);
+		return FALSE;
+	}
+	uni_image_header_t image_header;
+		
+	if(sizeof(uni_image_header_t) != fread(&image_header,1,sizeof(uni_image_header_t),fp))
+	{
+		fclose(fp);
+		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
+		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);
+		return FALSE;
+	}
+	fclose(fp);
+	printf("image_header.image_version = %s\n",image_header.image_version);
+	printf("image_header.release_version = %s\n",image_header.release_version);
+	/*make some check if it's valid image,the init function in libupgrade will do that,but i want get partition info first*/
+	memcpy(image_type,image_header.release_version,UNI_MAX_REL_VERSION_LEN);
+	strtok(image_type,";");
+	if(strcasecmp(image_type,PROJECT))
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
+		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);
+		return FALSE;
+	}
+	total_partition = image_header.total_partitions;
+	if(total_partition <= 0 || total_partition > UNI_MAX_PARTITION)
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
+		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);
+		return FALSE;
+	}
+	int i;
+	for(i = 0; i < total_partition; ++i)
+	{		
+		memcpy(partition_name[i],image_header.partition[i].partition_name,UNI_MAX_PARTITION_NAME_LEN);
+	}
+	cbs_per_line = total_partition/2;
+	return TRUE;
+}
 
 /*get src 's filename concatenate to dest
 * dest is linux filename，
@@ -473,13 +684,26 @@ static inline int get_abs_file_name(char *dest,const char *src)
 	
 	return TRUE;
 }
+/*just replace all '\' to '/' */
+static inline char *dir_win32_to_linux(char *dir)
+{
+	static char linux_dir[256];
+	strncpy(linux_dir,dir,256);
+	dir = linux_dir;
+	while(*dir)
+	{
+		if(*dir == '\\')
+			*dir = '/';
+		++dir;
+	}
+	return linux_dir;	
+}
 static inline int get_file_len(const char *file)
 {
 	int retval = -1;
 	FILE *fp = fopen(file,"rb");
 	if(fp == NULL)
-	{
-		retval = ERROR_CODE_OPEN_FILE_ERROR;
+	{		
 		return retval;
 	}
 	fseek(fp,0,SEEK_END);
@@ -511,65 +735,158 @@ static inline int write_file(void *buff,int len,const char *filename)
 	return retval;
 }
 
-static inline int exec_in_tg(const char *script)
+static inline int RebootTarget(const char *ip)
 {	
-	int retval = -1;
-#ifdef U3_LIB
-	/*write script into tmpfile then pass tmpfile name to file_download*/
-	char *tmp_file = tempname(NULL,"tmp");
-	if(tmp_file == NULL)
-		return retval;
-	if(strlen(script) != write_file(script,strlen(script),tmp_file))
-		return retval;
-	retval = file_download(tmp_file,"/tmp/tmp_script.sh");
-	remove(tmp_file);
-#else
-	retval = download_file(script,strlen(script),"/tmp/tmp_script.sh");		
-#endif
-	if(retval != 0)
-		return retval;
-	retval = exec_file_in_tg("/tmp/tmp_script.sh");
-	return retval;
+	return execute_cmd_in_tg(ip,"reboot");
 }
-static inline int RebootTarget()
-{	
-	return exec_in_tg("#!/bin/sh\nreboot\n");
-}
-static inline int EnableTelnet()
+static inline int EnableTelnet(const char *ip)
 {
-	return exec_in_tg("#!/bin/sh\ntelent &\n");
+	return execute_cmd_in_tg(ip,"telnetd &");
 }
-
+static inline BOOL parse_ip_list(const char *ip_list)
+{
+	char buff[256],*ip;	
+	int ip_cnt = 0;
+	ini_file_info.ip_should_flash = 0;
+	if(strlen(ip_list) > 256)
+		return FALSE;
+	strcpy(buff,ip_list);
+	ip = strtok(buff," \t");	
+	while(ip)
+	{
+		if(strlen(ip) > 16)
+			return FALSE;
+		strcpy(ini_file_info.ip[ip_cnt++],ip);		
+		ip = strtok(NULL," \t");
+	}
+	if(ip_cnt > 4)
+		return FALSE;
+	ini_file_info.ip_should_flash = ip_cnt;
+	return TRUE;
+}
 static inline BOOL parse_ini_file(const char *file)
 {	
-	char *ip,*image;
+	char *ip_list,*image,*rescue_image;
 	/*read the ini file and parse it into struct*/
+	/*clear ini information*/
+	memset(&ini_file_info,0,sizeof(ini_file_info));
 	dictionary *ini_config = iniparser_load(file);
 	if(ini_config == NULL)
 	{		
 		return FALSE;
 	}
 	if(iniparser_getnsec(ini_config) != 1)
-	{		
+	{
 		goto EXIT;
 	}
-	ip = iniparser_getstring(ini_config,"Options:ip",NULL);
+	ip_list = iniparser_getstring(ini_config,"Options:ip",NULL);
 	image = iniparser_getstring(ini_config,"Options:image",NULL);
-	if(ip != NULL && image != NULL && strlen(ip) < 16 && strlen(image) < MAX_PATH)
-	{		
-		strcpy(ini_file_info.ip,ip);
+	rescue_image = iniparser_getstring(ini_config,"Options:rescue_image",NULL);
+	if(ip_list != NULL)
+		parse_ip_list(ip_list);
+	if(image && strlen(image) < MAX_PATH)
 		strcpy(ini_file_info.name_of_image,image);
-		iniparser_freedict(ini_config);
-		return TRUE;
-	}
+	if(rescue_image && strlen(rescue_image) < MAX_PATH)
+		strcpy(ini_file_info.name_of_rescue_image,rescue_image);
+	iniparser_freedict(ini_config);
+	return TRUE;
 EXIT:
 	iniparser_freedict(ini_config);
 	return FALSE;	
 }
-
-static void ChangeProgressBar(int percent)
+/*Description:
+* 		check if ini file exsit and it's valid for current burn_mode
+* burn_mode = SELECT_LINUX_PROGRAMMING:
+* 			a.if it's for development tools,image key is irrelevant
+* 			b.if it's for maintainment tools,image key is necessary,and image must exsit
+* 			ip key is necessary and rescue_image key is irrelevant for this burn_mode
+* burn_mode = SELECT_SPL_PROGRAMMING:
+* burn_mode = SELECT_MFG_PROGRAMMING:(include development tools and production tools)
+*			ip key and rescue_image key is necessary,rescue_image must exsit,image key is irrelevant(specified by browser)
+*/
+static inline BOOL check_ini(void)
 {
-    
+	/*read the ini file and parse it into struct*/
+	/*if don't need a ini file then return TRUE*/
+	if(ini_file == NULL)
+		return TRUE;
+	if(_access(ini_file,0))
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"ini file lost.");
+		snprintf(error_msg,ERROR_INFO_MAX,"%s lost.",ini_file);
+		return FALSE;
+	}	
+	if(parse_ini_file(ini_file) == FALSE)
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"ini file invalid configuration.");
+		snprintf(error_msg,ERROR_INFO_MAX,"%s invalid configuration.",ini_file);		
+		return FALSE;
+	}
+	switch(burn_mode)
+	{
+
+		case SELECT_LINUX_PROGRAMMING:
+		if(ini_file_info.ip_should_flash == 0)
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"No ip specified.");
+			snprintf(error_msg,ERROR_INFO_MAX,"No ip specified in %s",ini_file);
+			return FALSE;
+		}
+#ifdef MAINTAINMENT
+		if(ini_file_info.name_of_image[0] == 0)
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"No image specified.");
+			snprintf(error_msg,ERROR_INFO_MAX,"No image specified in %s",ini_file);
+			return FALSE;
+		}
+		if(_access(ini_file_info.name_of_image,0))
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"can't find image.");
+			snprintf(error_msg,ERROR_INFO_MAX,"can't find %s.",ini_file_info.name_of_image);
+			return FALSE;
+		}
+		if(get_image_info(ini_file_info.name_of_image) == FALSE)
+		{
+			return FALSE;
+		}
+#endif
+		break;
+		case SELECT_SPL_PROGRAMMING:		
+		case SELECT_MFG_PROGRAMMING:
+		if(ini_file_info.ip_should_flash == 0)
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"No ip specified.");
+			snprintf(error_msg,ERROR_INFO_MAX,"No ip specified in %s",ini_file);
+			return FALSE;
+		}		
+		if(ini_file_info.name_of_rescue_image[0] == 0)
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"No rescue image specified.");
+			snprintf(error_msg,ERROR_INFO_MAX,"No rescue image specified in %s",ini_file);
+			return FALSE;
+		}
+		if(_access(ini_file_info.name_of_rescue_image,0))
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"can't find rescue image.");
+			snprintf(error_msg,ERROR_INFO_MAX,"can't find %s.",ini_file_info.name_of_rescue_image);
+			return FALSE;
+		}
+		break;
+	}
+#ifdef ENABLE_DEBUG
+	printf("ini_file = %s\n",ini_file);
+	printf("ip_should_flash = %d\n",ini_file_info.ip_should_flash);
+	int i;
+	for(i = 0 ;i < ini_file_info.ip_should_flash;++i)
+	{
+		printf("ip = %s\n",ini_file_info.ip[i]);
+	}	
+	printf("rescue_image = %s\n",ini_file_info.name_of_rescue_image);
+#endif
+	return TRUE;
+}
+static void ChangeProgressBar(int percent)
+{    
     char temp[16];   
     sprintf(temp, " %02d%% ", percent);
     SetWindowText(hwndPopPercent, TEXT(temp));
@@ -624,21 +941,6 @@ HDEVNOTIFY ad6900_lan = NULL;
 HDEVNOTIFY ad6900_spl = NULL;
 HDEVNOTIFY ad6900_mfg = NULL;
 
-
-static inline void waiting_for_reboot(void)
-{
-    SetTimer(hwndMain, TIMER_WAITING_FOR_REBOOT, 2000, NULL);
-}
-
-static inline void counting_interfaces(void)
-{
-    SetTimer(hwndMain, TIMER_COUNTING_INTERFACES, 8000, NULL);
-}
-
-static inline void scanning_progress_timer(void)
-{
-    SetTimer(hwndMain, TIMER_SCANNING_DEVS, 1000, NULL);
-}
 /********************************helper******************************/
 
 
@@ -725,84 +1027,36 @@ static void unregister_notifyer(void)
     usbChangeNotificationUnRegister(&ad6900_mfg);
 }
 
-FILE *open_file_for_readonly(const char *filename)
-{
-    FILE *fptr = fopen(filename, "rb");
-    return fptr;
-}
-
-
-#define START_WAITING() do { g_mi.is_waiting = 1; SetEvent(g_event_wait); } while (0)
-#define STOP_WAITING()  do { g_mi.is_waiting = 0; } while (0)
-
-
-static inline void start_timer(int reason, int set_time_us)
-{
-   
-}
-
-static inline void stop_timer(int reason)
-{
-    
-}
-
-void reset_all_timers (void)
-{
-   
-}
-
-static void show_waiting()
-{
-    SetWindowText(hwndLinStaticInfo, "Processing               ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing...            ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing... ...        ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing    ... ...    ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing        ... ...");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing            ...");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing               ");
-    Sleep(500);
-}
-
-
-static DWORD WINAPI waiting_thread()
-{	
-    return 0;
-}
 
 #define WAKE_THREAD_UP() do {SetEvent(g_event); } while (0)
 
-char* current_step[] = {
-    "Download successfully !",
-    "Waiting for mfg mode device...",
-    "Waiting for spl mode device...",
-    "Waiting for upgrade mode device...",
-    "Error code: ",
-};
 
 static DWORD WINAPI TransferThread(LPVOID lpParam)
 {
 	int retval = 0;
-	unsigned short percent = 0;
-	unsigned short status = 0;
-	unsigned char index = 0;	
-	TCHAR text[256];	
-	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
+	unsigned char percent = 0,last_percent;
+	unsigned short status = 0,last_status;
+	unsigned char index = 0,last_index;
 	
+	TCHAR text[256];
+	
+	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
+		
 	while(1)
 	{
 		Sleep(250);
+		//reset varibles
+		last_percent = percent;
+		last_status = status;
+		last_index = index;
+		percent = 0;
+		status = 0;
+		index = 0;
 		if(g_transfer_complete)
-		{
-			if(hwndPop)
-				SendMessage(hwndMain,WM_DESTROY_PROGRESS_BAR,0,0);
+		{			
 			break;
 		}
+		
 		retval = progress_reply_status_get(&index,&percent,&status);
 #ifdef ENABLE_DEBUG
 		printf("retval = %d, status = %d, index = %02x, percent = %d\n",
@@ -810,61 +1064,22 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 #endif
 		if(retval != 0)
 		{
+			printf("progress_reply_status_get return errcode:%s\n",get_error_info(retval));
 			break;
-		}
-		if(hwndPop == NULL && status != 0)		
-			SendMessage(hwndMain,WM_CREATE_PROGRESS_BAR,0,0);
+		}		
 		
-#if 0
-		switch(status)
+		if(!(last_index == index && last_percent == percent && last_status == status))//stage index or percent changed
 		{
-			case PROGRESS_STATUS_PREPARING:
-			break;
-			case PROGRESS_STATUS_FINISHED:
-			snprintf(text,256,"%s %s",stage[status],partition_name[index]);
-			break;
-			case PROGRESS_STATUS_FLASHING:
-			case PROGRESS_STATUS_VERIFYING:
-			case PROGRESS_STATUS_EXECUTING:
-			case PROGRESS_STATUS_TRANSFER:
-			snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],partition_name[index],percent);
-			break;
-		}
-#ifdef DEVELOPMENT
-		switch(burn_mode)
-		{
-			case SELECT_FILE_TRANSFER:
-			/*file transfer don't get progress yet*/
-			break;
-			case SELECT_LINUX_PROGRAMMING:
-			SetWindowText(hwndLinStaticInfo,text);
-			break;
-			case SELECT_SPL_PROGRAMMING:
-			SetWindowText(hwndSPLStaticInfo,text);
-			break;
-			case SELECT_MFG_PROGRAMMING:
-			SetWindowText(hwndMFGStaticInfo,text);
-			break;
-#ifdef ENABLE_DEBUG
-			default:
-			ERROR_MESSAGE("Unhandled burn_mode");
-			break;
-#endif
-		}
-#elif defined(PRODUCTION)
-		SetWindowText(hwndMFGStaticInfo,text);
-#elif defined(MAINTAINMENT)
-		SetWindowText(hwndLinStaticInfo,text);
-#endif
-
-#endif
-		if(hwndPop)
-		{
-			snprintf(text,256,"%s %s",stage[status],partition_name[index]);
-			ChangeProgressBarText(text);
-			ChangeProgressBar(percent);	
-		}
-		
+			if(percent != 0)
+			{
+				snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],index < total_partition ? partition_name[index] : "",percent);
+			}
+			else
+			{
+				snprintf(text,256,"%s %s",stage[status],index < total_partition ? partition_name[index] : "");
+			}
+			SetWindowText(hwndInfo,text);
+		}		
 	}
 	return retval;
 }
@@ -872,11 +1087,14 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 static inline BOOL transfer_start(void)
 {
 	g_transfer_complete = FALSE;
-	return NULL != CreateThread(NULL, 0, TransferThread, NULL, 0, NULL);
+	SetWindowText(hwndInfo,"Preparing..");
+	g_hTransfer = CreateThread(NULL, 0, TransferThread, NULL, 0, NULL);	
+	return NULL != g_hTransfer;
 }
 static inline void transfer_complete(void)
-{
+{	
 	g_transfer_complete = TRUE;
+	WaitForSingleObject(g_hTransfer,INFINITE);
 }
 
 /*
@@ -887,8 +1105,7 @@ static inline void transfer_complete(void)
  * the important information in g_mi is not changed during updating
  */
 static DWORD WINAPI BackGroundThread(LPVOID lpParam)
-{
-	
+{	
 	while(1)
 	{
 		WaitForSingleObject(g_event,INFINITE);
@@ -899,12 +1116,13 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
 			g_locking = TRUE;
             if(g_background_func)
 			{
-				g_background_func();
+				g_retval = g_background_func();
+				PostMessage(hwndMain,WM_INVOKE_CALLBACK,0,0);
+				
 				g_background_func = NULL;
-			}
+			}			
 			g_locking = FALSE;			
         }
-		       
 	}	
     return 0;
 }
@@ -913,8 +1131,8 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
 
 static BOOL StartThread(void)
 {
-    g_hTransfer = CreateThread(NULL, 0, BackGroundThread, NULL, 0, NULL);
-    if (g_hTransfer == NULL)
+    g_hBackGround = CreateThread(NULL, 0, BackGroundThread, NULL, 0, NULL);
+    if (g_hBackGround == NULL)
     {
         ERROR_MESSAGE("create BackGroundThread error\n");
         return FALSE;
@@ -922,21 +1140,6 @@ static BOOL StartThread(void)
     return TRUE;
 }
 
-static BOOL start_wait_thread(void)
-{
-    g_h_wait = CreateThread(NULL, 0, waiting_thread, NULL, 0, NULL);
-    if (g_h_wait == NULL)
-    {
-        ERROR_MESSAGE("create waiting_thread error\n");
-        return FALSE;
-    }
-    return TRUE;
-}
-
-/*
- * return 1 check 0 not check
- */
-#define CHECKBOX_IS_CLICK(x)  (Button_GetCheck(x) == BST_CHECKED)
 
 /*******************************************************/
 /*                 helpers                             */
@@ -1088,13 +1291,53 @@ static void InitLinuxWindow(void)
             hwndTab, NULL, hInst, NULL);
 
     debug_positions(hwndLinPage, "hwndLinPage");
+	
+	relative_x = GBOX1_START_X + V_GAPS;
+    relative_y = GBOX1_START_Y;
+#if 0 && defined(DEVELOPMENT)
+	
+    hwndLinStaticDev = CreateWindow(TEXT("static"), "Devices list:",
+                         WS_CHILD | WS_VISIBLE | SS_LEFT,
+                         relative_x, relative_y + WIN_STATIC_OFFSET,
+                         WIDTH_TEXT+30, HEIGHT_CONTROL,
+                         hwndLinPage, NULL,
+                         hInst, NULL);
+
+    relative_x += WIDTH_TEXT + 30;
+    hwndLinComboDevList = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("ComboBox"), NULL,
+                         WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE|
+                         CBS_AUTOHSCROLL,
+                         relative_x, relative_y,
+                         WIDTH_COMBO, HEIGHT_CONTROL*10,
+                         hwndLinPage, NULL,
+                         hInst, NULL); 
+
+    relative_x += WIDTH_COMBO + 10;
+    hwndLinBtnRefresh =  CreateWindow(TEXT("button"), "Refresh",
+                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                         relative_x, relative_y,
+                         WIDTH_BUTTON, HEIGHT_CONTROL,
+                         hwndLinPage, NULL,
+                         hInst, NULL);
+
+    relative_x += WIDTH_BUTTON + 65;
+    hwndLinBtnReset =    CreateWindow(TEXT("button"), "ResetToAppMode",
+                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                         relative_x, relative_y,
+                         WIDTH_BUTTON+WIDTH_BUTTON/2, HEIGHT_CONTROL,
+                         hwndLinPage, NULL,
+                         hInst, NULL);
+						 
+	relative_y	+= HEIGHT_CONTROL + Y_MARGIN;
+	max_Groupbox1_height -= relative_y;
+#endif
 
     printf("hwndLinGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
-            GBOX1_START_X, GBOX1_START_Y, max_Groupbox1_width, max_Groupbox1_height);
+            GBOX1_START_X, relative_y, max_Groupbox1_width, max_Groupbox1_height);
 
-    hwndLinGroupReadme = CreateWindow( TEXT ("button"), "Readme",
+    hwndLinGroupReadme = CreateWindow( TEXT ("button"), "Information",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
-            GBOX1_START_X, GBOX1_START_Y,
+            GBOX1_START_X, relative_y,
             max_Groupbox1_width, max_Groupbox1_height,
             hwndLinPage, NULL,
             hInst, NULL);
@@ -1102,14 +1345,14 @@ static void InitLinuxWindow(void)
     debug_positions(hwndLinGroupReadme, "hwndLinGroupReadme");
 
     relative_x = GBOX1_START_X + V_GAPS;
-    relative_y = GBOX1_START_Y;
+    //relative_y = GBOX1_START_Y;
 
     sprintf(project_target, "%s%s%s", "Project:  ",PROJECT , target_type[0]);
 
     relative_x += H_GAPS * 2;
     relative_y += V_GAPS + HEIGHT_TAG;
 #ifdef MAINTAINMENT
-	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press CheckImg Button.\n3. Press Upgrade/Download Button and wait until it finished.\n4. If any error occurs during updating/downloading,please reconnect device and reopen this tool to try it again.");
+	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade/Download Button and wait until it finished.\n3. If any error occurs during updating/downloading,please reconnect device and re-open this tool to try it again.\n4.Don't pull off the USB cable during process.");
 #else
 	readme = project_target;
 #endif
@@ -1127,8 +1370,36 @@ static void InitLinuxWindow(void)
     debug_positions(hwndLinTextTarget, "hwndLinTextTarget");
 
       
-    relative_y += 2 * (HEIGHT_CONTROL + V_GAPS) + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL+35;
 
+	printf("hwndLinProcessInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndLinProcessInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndLinProcessInfo, "hwndLinProcessInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
+	printf("hwndLinStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndLinStaticIpInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndLinStaticIpInfo, "hwndLinStaticIpInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
     printf("hwndLinStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
 
@@ -1148,7 +1419,7 @@ static void InitLinuxWindow(void)
     printf("hwndLinGroupOptions's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, start_y_of_Groupbox2, max_Groupbox2_width, max_Groupbox2_height);
 
-    hwndLinGroupOptions = CreateWindow( TEXT ("button"), "Options",
+    hwndLinGroupOptions = CreateWindow( TEXT("button"), "Options",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
             GBOX1_START_X, start_y_of_Groupbox2,
             max_Groupbox2_width, max_Groupbox2_height,
@@ -1156,12 +1427,41 @@ static void InitLinuxWindow(void)
             hInst, NULL);
 
     debug_positions(hwndLinGroupOptions, "hwndLinGroupOptions");
+	
+	relative_x = GBOX1_START_X;
+    relative_y = start_y_of_Groupbox2;
 
+#ifndef MAINTAINMENT
+    relative_x += H_GAPS * 2;
+    relative_y += V_GAPS + HEIGHT_TAG;
+	printf("hwndLinStaticImg's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_TEXT, HEIGHT_CONTROL);
+	hwndLinStaticImg = CreateWindow( TEXT ("static"), "    Image:",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            WIDTH_TEXT, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+	debug_positions(hwndLinStaticImg, "hwndLinStaticImg");
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	
+	printf("hwndLinStaticBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_EDIT, HEIGHT_CONTROL);
 
+    hwndLinStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("static"), NULL,
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            WIDTH_EDIT, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
 
-    relative_x = GBOX1_START_X + X_MARGIN;
-	relative_y = start_y_of_Groupbox2 + Y_MARGIN*3;
-#ifdef MAINTAINMENT
+    debug_positions(hwndLinStaticBrowser, "hwndLinStaticBrowser");
+	
+	relative_x += WIDTH_EDIT + X_MARGIN;
+	relative_y += HEIGHT_CONTROL + Y_MARGIN;
+#endif
+
+#if 0&&(defined(MAINTAINMENT) && !defined(U3_LIB))
 	hwndCheckBoxDelete = CreateWindow( TEXT("button"), "Delete User Data",
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             relative_x, relative_y,
@@ -1178,7 +1478,7 @@ static void InitLinuxWindow(void)
     relative_y += HEIGHT_CONTROL + 2*Y_MARGIN;
 #endif
 
-#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
+#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
 	
 	hwndLinIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
@@ -1207,49 +1507,55 @@ static void InitLinuxWindow(void)
     debug_positions(hwndLinBtnRefresh, "hwndLinBtnRefresh");
 #endif
 #ifdef DEVELOPMENT
-	partition_x_pos = GBOX1_START_X + V_GAPS;;
+	partition_x_pos = GBOX1_START_X + V_GAPS;
 	partition_y_pos = relative_y + HEIGHT_CONTROL + Y_MARGIN;
 
 #endif
     relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     relative_y = start_y_of_Groupbox2;
     relative_y += V_GAPS + HEIGHT_TAG;
+
+    
+#ifdef MAINTAINMENT
+
+	printf("hwndLinBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
+	hwndLinBtnDown = CreateWindow( TEXT ("button"), "Upgrade",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON ,
+            relative_x, relative_y,
+            WIDTH_BUTTON, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+	debug_positions(hwndLinBtnDown, "hwndLinBtnDown");
 	
-	printf("hwndLinBtnCheckImg's dim: x=%d, y=%d, width=%d, height=%d\n",
+#elif defined(DEVELOPMENT)
+
+	printf("hwndLinBtnBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
-    hwndLinBtnCheckImg = CreateWindow(TEXT ("button"), "CheckImg",
+    hwndLinBtnBrowser = CreateWindow(TEXT ("button"), "Browser",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndLinPage, NULL,
             hInst, NULL);
 
-    debug_positions(hwndLinBtnCheckImg, "hwndLinBtnCheckImg");
-    
+    debug_positions(hwndLinBtnBrowser, "hwndLinBtnBrowser");    
 	
     relative_y += HEIGHT_CONTROL + V_GAPS*2;
-
-    printf("hwndLinBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
+	printf("hwndLinBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
-#ifdef MAINTAINMENT
-	hwndLinBtnDown = CreateWindow( TEXT ("button"), "Upgrade",
-            WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON ,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndLinPage, NULL,
-            hInst, NULL);	
-#else
     hwndLinBtnDown = CreateWindow( TEXT ("button"), "Download",
             WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON ,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndLinPage, NULL,
             hInst, NULL);
-#endif
-    debug_positions(hwndLinBtnDown, "hwndLinBtnDown");
+	debug_positions(hwndLinBtnDown, "hwndLinBtnDown");
+
+#endif    
 	
-	 printf("hwndLinBtnStop's dim: x=%d, y=%d, width=%d, height=%d\n",
+	printf("hwndLinBtnStop's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
 
@@ -1259,7 +1565,7 @@ static void InitLinuxWindow(void)
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
     hwndBtnEnableTelnet = CreateWindow( TEXT("button"), "EnableTelnet",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            WS_CHILD | WS_VISIBLE  | BS_PUSHBUTTON,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndLinPage, NULL,
@@ -1268,7 +1574,7 @@ static void InitLinuxWindow(void)
     debug_positions(hwndBtnEnableTelnet, "hwndBtnEnableTelnet");
 	relative_y += HEIGHT_CONTROL + V_GAPS*2;
 #endif
-#if (defined(CONFIG_PROJECT_G4_BBA) )/*G4 support battery check*/	
+#ifndef U3_LIB	
     printf("hwndCheckBoxSkipBatCheck's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x-4*X_MARGIN, relative_y, WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5);
 
@@ -1328,7 +1634,7 @@ static void InitSPLWindow(void)
     printf("hwndSPLGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, GBOX1_START_Y, max_Groupbox1_width, max_Groupbox1_height);
 
-    hwndSPLGroupReadme = CreateWindow( TEXT ("button"), "Readme",
+    hwndSPLGroupReadme = CreateWindow( TEXT ("button"), "Information",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
             GBOX1_START_X, GBOX1_START_Y,
             max_Groupbox1_width, max_Groupbox1_height,
@@ -1360,7 +1666,37 @@ static void InitSPLWindow(void)
     debug_positions(hwndSPLTextTarget, "hwndSPLTextTarget");
 
       
-    relative_y += 2 * (HEIGHT_CONTROL + V_GAPS) + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL+35;
+	
+	printf("hwndSPLProcessInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndSPLProcessInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndSPLPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndSPLProcessInfo, "hwndSPLProcessInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
+
+	printf("hwndSPLStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndSPLStaticIpInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndSPLPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndSPLStaticIpInfo, "hwndSPLStaticIpInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
 
     printf("hwndSPLStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
@@ -1390,13 +1726,40 @@ static void InitSPLWindow(void)
 
     debug_positions(hwndSPLGroupOptions, "hwndSPLGroupOptions");
 
+	relative_x = GBOX1_START_X;
+    relative_y = start_y_of_Groupbox2;
 
+    relative_x += H_GAPS * 2;
+    relative_y += V_GAPS + HEIGHT_TAG;
+	
+	printf("hwndSPLStaticImg's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_TEXT, HEIGHT_CONTROL);
+	hwndSPLStaticImg = CreateWindow( TEXT ("static"), "    Image:",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            WIDTH_TEXT, HEIGHT_CONTROL,
+            hwndSPLPage, NULL,
+            hInst, NULL);
+	debug_positions(hwndSPLStaticImg, "hwndSPLStaticImg");
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	
+	printf("hwndSPLStaticBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_EDIT, HEIGHT_CONTROL);
 
-    relative_x = GBOX1_START_X + X_MARGIN;
-	relative_y = start_y_of_Groupbox2 + Y_MARGIN*3;
+    hwndSPLStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("static"), NULL,
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            WIDTH_EDIT, HEIGHT_CONTROL,
+            hwndSPLPage, NULL,
+            hInst, NULL);
 
+    debug_positions(hwndSPLStaticBrowser, "hwndSPLStaticBrowser");
+	
+	relative_x += WIDTH_EDIT + X_MARGIN;
+	relative_y += HEIGHT_CONTROL + Y_MARGIN;
+	
 
-#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
+#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
 	
 	hwndSPLIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
@@ -1428,21 +1791,23 @@ static void InitSPLWindow(void)
     relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     relative_y = start_y_of_Groupbox2;
     relative_y += V_GAPS + HEIGHT_TAG;
-	
-	printf("hwndSPLBtnCheckImg's dim: x=%d, y=%d, width=%d, height=%d\n",
+
+#ifdef DEVELOPMENT
+	printf("hwndSPLBtnBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
-    hwndSPLBtnCheckImg = CreateWindow(TEXT ("button"), "CheckImg",
+    hwndSPLBtnBrowser = CreateWindow(TEXT ("button"), "Browser",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndSPLPage, NULL,
             hInst, NULL);
 
-    debug_positions(hwndSPLBtnCheckImg, "hwndSPLBtnCheckImg");
+    debug_positions(hwndSPLBtnBrowser, "hwndSPLBtnBrowser");
     
 	
     relative_y += HEIGHT_CONTROL + V_GAPS*2;
+#endif	
 
     printf("hwndSPLBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
@@ -1456,36 +1821,6 @@ static void InitSPLWindow(void)
 
     debug_positions(hwndSPLBtnDown, "hwndSPLBtnDown");
 	
-	 printf("hwndSPLBtnStop's dim: x=%d, y=%d, width=%d, height=%d\n",
-            relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
-
-#ifdef PRODUCTION
-    hwndSPLBtnStop = CreateWindow( TEXT ("button"), "Stop",
-            WS_CHILD /*| WS_VISIBLE */| BS_PUSHBUTTON,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndSPLPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndSPLBtnStop, "hwndSPLBtnStop");
-
-    relative_y += HEIGHT_CONTROL + V_GAPS*2;
-
-
-
-    printf("hwndCheckBoxBatch's dim: x=%d, y=%d, width=%d, height=%d\n",
-            relative_x-4*X_MARGIN, relative_y, WIDTH_BUTTON*2, HEIGHT_CONTROL);
-
-    hwndCheckBoxBatch = CreateWindow(TEXT("button"), TEXT("Batch Programing"),
-            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-            relative_x-4*X_MARGIN, relative_y,
-            WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5,
-            hwndSPLPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndCheckBoxBatch, "hwndCheckBoxBatch");
-	
-#endif
 }
 /*
  *  Name:     InitMFGWindow
@@ -1526,7 +1861,7 @@ static void InitMFGWindow(void)
     printf("hwndMFGGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, GBOX1_START_Y, max_Groupbox1_width, max_Groupbox1_height);
 
-    hwndMFGGroupReadme = CreateWindow( TEXT ("button"), "Readme",
+    hwndMFGGroupReadme = CreateWindow( TEXT ("button"), "Information",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
             GBOX1_START_X, GBOX1_START_Y,
             max_Groupbox1_width, max_Groupbox1_height,
@@ -1558,7 +1893,35 @@ static void InitMFGWindow(void)
     debug_positions(hwndMFGTextTarget, "hwndMFGTextTarget");
 
       
-    relative_y += 2 * (HEIGHT_CONTROL + V_GAPS) + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL+35;
+	
+	printf("hwndMFGProcessInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndMFGProcessInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndMFGProcessInfo, "hwndMFGProcessInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+
+	printf("hwndMFGStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndMFGStaticIpInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndMFGStaticIpInfo, "hwndMFGStaticIpInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
 
     printf("hwndMFGStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
@@ -1588,13 +1951,39 @@ static void InitMFGWindow(void)
 
     debug_positions(hwndMFGGroupOptions, "hwndMFGGroupOptions");
 
+	relative_x = GBOX1_START_X;
+    relative_y = start_y_of_Groupbox2;
 
+    relative_x += H_GAPS * 2;
+    relative_y += V_GAPS + HEIGHT_TAG;
+	
+	printf("hwndMFGStaticImg's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_TEXT, HEIGHT_CONTROL);
+	hwndMFGStaticImg = CreateWindow( TEXT ("static"), "    Image:",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            WIDTH_TEXT, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL);
+	debug_positions(hwndMFGStaticImg, "hwndMFGStaticImg");
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	
+	printf("hwndMFGStaticBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, WIDTH_EDIT, HEIGHT_CONTROL);
 
-    relative_x = GBOX1_START_X + X_MARGIN;
-	relative_y = start_y_of_Groupbox2 + Y_MARGIN*3;
+    hwndMFGStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("static"), NULL,
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            WIDTH_EDIT, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL);
 
+    debug_positions(hwndMFGStaticBrowser, "hwndMFGStaticBrowser");
+	
+	relative_x += WIDTH_EDIT + X_MARGIN;
+	relative_y += HEIGHT_CONTROL + Y_MARGIN;
 
-#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
+#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
 	
 	hwndMFGIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
@@ -1626,22 +2015,22 @@ static void InitMFGWindow(void)
     relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     relative_y = start_y_of_Groupbox2;
     relative_y += V_GAPS + HEIGHT_TAG;
-	
-	printf("hwndMFGBtnCheckImg's dim: x=%d, y=%d, width=%d, height=%d\n",
+
+
+	printf("hwndMFGBtnBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
-    hwndMFGBtnCheckImg = CreateWindow(TEXT ("button"), "CheckImg",
+    hwndMFGBtnBrowser = CreateWindow(TEXT ("button"), "Browser",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndMFGPage, NULL,
             hInst, NULL);
 
-    debug_positions(hwndMFGBtnCheckImg, "hwndMFGBtnCheckImg");
-    
+    debug_positions(hwndMFGBtnBrowser, "hwndMFGBtnBrowser");   
 	
     relative_y += HEIGHT_CONTROL + V_GAPS*2;
-
+	
     printf("hwndMFGBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
@@ -1657,7 +2046,7 @@ static void InitMFGWindow(void)
 	 printf("hwndMFGBtnStop's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
-#ifdef PRODUCTION
+			
     hwndMFGBtnStop = CreateWindow( TEXT ("button"), "Stop",
             WS_CHILD /*| WS_VISIBLE */| BS_PUSHBUTTON,
             relative_x, relative_y,
@@ -1668,9 +2057,7 @@ static void InitMFGWindow(void)
     debug_positions(hwndMFGBtnStop, "hwndMFGBtnStop");
 
     relative_y += HEIGHT_CONTROL + V_GAPS*2;
-
-
-
+#if defined(PRODUCTION)
     printf("hwndCheckBoxBatch's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x-4*X_MARGIN, relative_y, WIDTH_BUTTON*2, HEIGHT_CONTROL);
 
@@ -1758,80 +2145,6 @@ static BOOL InitMainWindow(void)
     return TRUE;
 }
 
-/*}*/
-/*******************************************************/
-/*                  main functions                     */
-/*******************************************************//*{*/
-
-static void FreeHandler(HWND *phandler)
-{
-    int i;
-
-    for(i=0; i<UNI_MAX_PARTITION; i++)
-    {
-        if (phandler[i] != NULL)
-        {
-            DestroyWindow(phandler[i]);
-            phandler[i] = NULL;
-        }
-    }
-}
-
-static void FreezeHandler(HWND *phandler, BOOL freeze)
-{
-    int i;
-
-    for(i=0; i<UNI_MAX_PARTITION; i++)
-    {
-        if (phandler[i] != NULL)
-        {
-            EnableWindow(phandler[i], (!(freeze)));
-        }
-    }
-}
-#if 0
-void update_ui_resources(int i)
-{
-    if (/*g_mi.is_waiting*/i == 1) {
-#ifdef DEVELOPER
-        FreezeHandler(hwndCheckBox, TRUE);
-#endif
-        EnableWindow(hwndLinBtnCheckImg, FALSE);
-        EnableWindow(hwndCheckBoxBatch, FALSE);
-        //EnableWindow(hwndCheckbox1, FALSE);
-        EnableWindow(hwndLinBtnDown, FALSE);
-        EnableWindow(hwndBtnEnableTelnet, FALSE);
-
-#ifdef PRODUCTION
-        update_btn_stop(1);
-#else
-        EnableWindow(hwndTab, FALSE);
-#endif
-    }
-    else
-    {
-#ifdef DEVELOPER
-        FreezeHandler(hwndCheckBox, FALSE);
-#endif
-        EnableWindow(hwndLinBtnCheckImg, TRUE);
-        EnableWindow(hwndCheckBoxBatch, TRUE);
-        //EnableWindow(hwndCheckbox1, TRUE);
-        EnableWindow(hwndLinBtnDown, TRUE);
-        EnableWindow(hwndBtnEnableTelnet,TRUE);
-
-#ifdef PRODUCTION
-        update_btn_stop(0);
-#else
-        EnableWindow(hwndTab, TRUE);
-#endif
-
-#if ( defined (PRODUCTION) || defined (MAINTAINMENT) )
-       FreezeHandler(hwndCheckBox, TRUE);
-#endif
-    }
-}
-#endif
-
 static void PopProgressBar( void )
 {   
 
@@ -1865,195 +2178,373 @@ static void PopProgressBar( void )
       
 }
 
-static BOOL network_init(void)
+static BOOL linux_init(const char *ip)
 {
-	int retval = -1;	
-	int image_len = 0;
-	unsigned char *buff = NULL;
-	/*read the ini file and parse it into struct*/
-	
-	if(get_file_len(ini_file) <= 0)
-	{
-		ERROR_MESSAGE("%s lost.",ini_file);
-		return FALSE;
-	}
-	if(parse_ini_file(ini_file) == FALSE)
-	{
-		ERROR_MESSAGE("%s syntax error.",ini_file);
-		return FALSE;
-	}
-	printf("ini_file = %s\n",ini_file);
-	printf("ip = %s, image = %s\n",ini_file_info.ip,ini_file_info.name_of_image);
-	if(get_image_info(ini_file_info.name_of_image) == FALSE)
-	{
-		ERROR_MESSAGE("get image partition failed.");
-		return FALSE;
-	}
-	image_len = get_file_len(ini_file_info.name_of_image);
-	if(image_len <= 0)
-	{
-		ERROR_MESSAGE("%s not exsit.",ini_file_info.name_of_image);
-		return FALSE;
-	}
-	/*alloc memory for image_buffer,it will be released when tool terminated*/
-	void *ptmp = realloc(image_buffer,image_len);
-	if(ptmp == NULL)
-	{
-		free(image_buffer);
-		image_buffer = NULL;
-		ERROR_MESSAGE("Out of memory.");
-		return FALSE;
-	}
-	image_buffer = ptmp;
-	/*read image into iamge_buffer*/
-	retval = read_file(image_buffer,image_len,ini_file_info.name_of_image);
-	if(image_len != retval)
-	{
-		printf("ini_file_info.name_of_image = %s\n",ini_file_info.name_of_image);
-		printf("retval = %d, image_len = %d\n",retval,image_len);
-		ERROR_MESSAGE("%s read error.",ini_file_info.name_of_image);
-		return FALSE;
-	}
-	/*make WinUpgradeLibInit run in backgroud_func*/
-#ifdef DEVELOPMENT
-	switch(burn_mode)
-	{
-		case SELECT_FILE_TRANSFER:
-		case SELECT_LINUX_PROGRAMMING:
-		#ifdef U3_LIB
-		retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_len);
-		#else		
-		retval = WinUpgradeLibInit(image_buffer,image_len,ini_file_info.ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
-		printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_len,ini_file_info.ip);
-		#endif
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		/*SPL Programing not support yet*/
-		break;
-		case SELECT_MFG_PROGRAMMING:
-		retval = burnMFGinit(ini_file_info.name_of_image);
-		break;
-	}
-#elif defined(MAINTAINMENT)
-#ifdef U3_LIB
-	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_len);
+	printf("linux_init..\n");
+	int retval = -1;
+	char image[256];
+#ifdef MAINTAINMENT	
+	strcpy(image,ini_file_info.name_of_image);
 #else
-	retval = WinUpgradeLibInit(image_buffer,image_len,ini_file_info.ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
+	GetWindowText(hwndStaticBrowser,image,256);
 #endif
-#elif defined(PRODUCTION)
-	retval = burnMFGinit(ini_file_info.name_of_image);
-#endif		
-	if(retval != 0)
-	{
-		/*just print the errcode string*/
-		ERROR_MESSAGE("%s",get_error_info(retval));
+	
+	image_length = get_file_len(image);
+	if(image_length <= 0)
+	{		
+		snprintf(error_info,ERROR_INFO_MAX,"image not exsit");
+		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		return FALSE;
 	}	
-#ifdef DEVELOPMENT
-	switch(burn_mode)
+	/*make WinUpgradeLibInit run in backgroud_func*/
+	
+	retval = WinUpgradeLibInit(image,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
+	
+	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",image,image_length,ip);
+	if(retval != 0)
 	{
-		case SELECT_LINUX_PROGRAMMING:
-		printf("Linux PROGRAMMING for developer.\n");
-		CreatePartitionList();
-		//enable Download button
-		EnableWindow(hwndLinBtnDown,TRUE);
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		printf("SPL PROGRAMMING for developer.\n");
-		/*SPL Programing not support yet*/
-		EnableWindow(hwndSPLBtnDown,TRUE);
-		break;
-		case SELECT_MFG_PROGRAMMING:
-		printf("MFG PROGRAMMING for developer.\n");
-		EnableWindow(hwndMFGBtnDown,TRUE);
-		break;
+		snprintf(error_info,ERROR_INFO_MAX,"Linux init error.");
+		snprintf(error_msg,ERROR_INFO_MAX,"Linux init error.Error code is %s.",get_error_info(retval));
+		return FALSE;
 	}
-#elif defined(MAINTAINMENT)
-	EnableWindow(hwndLinBtnDown,TRUE);
-#elif defined(PRODUCTION)
-	EnableWindow(hwndMFGBtnDown,TRUE);		
-#endif		
 	return TRUE;
 }
 
-/*********************Nand Programing Button Process***********************/
-static void OnBtnCheckImgClick(void)
-{
-	EnableWindow(hwndMain,FALSE);
-	network_init();
-	EnableWindow(hwndMain,TRUE);
+static int linux_download(void)
+{	
+	int retval = -1;
+	const char *ip;
+	int i;
+	char ip_info[256];
+	
+	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
+	{		
+		ip = ini_file_info.ip[i];
+#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND) || defined(CONFIG_PROJECT_REPEATER_BBA))
+		snprintf(ip_info,256,"Ip : %s",ip);
+		printf("ip_info = %s\n",ip_info);
+		SetWindowText(hwndIpInfo,ip_info);
+#endif
+		SetDynamicInfo("Linux init");
+		BOOL ret = linux_init(ip);
+		StopDynamicInfo();	
+		if(FALSE == ret)
+		{			
+			goto linux_download_error;
+		}
+		
+		transfer_start();/*start a progress thread*/	
+		
+#ifdef DEVELOPMENT
+		printf("partition_selected = 0x%04x\n",partition_selected);
+		retval = burnpartition(partition_selected);
+#elif defined(MAINTAINMENT)
+		retval = burnImage();
+#if 0	
+		if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
+			retval = burnpartition(0xxxx);
+#endif
+#elif defined(PRODUCTION)
+		/*burn all partition*/
+		retval = burnpartition(((1<<total_partition)-1)/*&~(1<<3)*/);
+#endif		
+		
+		transfer_complete();
+		
+#ifdef MAINTAINMENT
+		if(retval == 0xFDBB)/*EC_USERDATA_UPGRADE_FAIL*/
+		{
+			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe userdata in your device)",szAppName,MB_YESNO|MB_ICONWARNING))
+			{
+				/*Select Yes,force to download by invoke burnpartition*/
+				transfer_start();			
+			#ifdef U3_LIB
+				retval = burnpartition(1<<5);//userdata
+			#else
+				retval = burnpartition(0x03E0);
+			#endif
+				transfer_complete();
+			}
+			else
+			{
+				/*Select No,reboot this cpu,then do next cpu*/
+				RebootTarget(ip);
+				continue;
+			}
+		}
+#endif
+		if(retval != 0)
+		{
+			snprintf(error_info,ERROR_INFO_MAX,"Linux download failed!");
+			snprintf(error_msg,ERROR_INFO_MAX,"Linux download failed! Error code is %s.",get_error_info(retval));
+			goto linux_download_error;
+		}	
+	}
+	
+	return 0;
+linux_download_error:	
+	return -1;
 }
 
-static void OnBtnDownClick(void)
+static BOOL spl_init(void)
+{	
+	printf("spl_init..\n");	
+	image_length = get_file_len(ini_file_info.name_of_rescue_image);
+	if(image_length <= 0)
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
+		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
+		return FALSE;
+	}
+	return TRUE;
+}
+static int spl_download(void)
 {
-	/*begin to download partition.
-	if it's for consumer,then it's according the ini file,
-	if it's for developer,then it's according the autocheckbox,
-	if it's for factory,then it's MFG burning,and if Batch box is checked,
-	then Down button will hiden,and Stop button show
-	*/
-	int retval = -1;
-	int partition_selected = 0;
+	int retval = -1;	
+	printf("spl_download..\n");
+	
+	SetDynamicInfo("SPL init");
+	BOOL ret = spl_init();
+	StopDynamicInfo();
+	if(FALSE == ret)
+	{
+		goto spl_download_error;
+	}
+	SetWindowText(hwndInfo,"Waiting for SPL download..");
 	
 	transfer_start();
-	EnableWindow(hwndLinPage,FALSE);	
 	
-#ifdef DEVELOPMENT
-	int i;
-	for(i = 0; i < total_partition;++i)
+	retval = burnSPL(ini_file_info.name_of_rescue_image);
+	
+	transfer_complete();
+	
+	if(retval != 0)
+	{		
+		snprintf(error_info,ERROR_INFO_MAX,"SPL download error.");		
+		snprintf(error_msg,ERROR_INFO_MAX,"SPL download error,Error code is %s.",get_error_info(retval));
+		goto spl_download_error;
+	}
+	retval = linux_download();	
+	if(retval != 0)
+		goto spl_download_error;	
+	return 0;
+spl_download_error:	
+	return -1;
+}
+static BOOL mfg_init(void)
+{
+	int retval = -1;
+	char image[256];
+	printf("mfg_init..\n");
+	
+	GetWindowText(hwndStaticBrowser,image,256);
+	
+	image_length = get_file_len(image);
+	if(image_length <= 0)
 	{
-		partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
-	}
-	EnablePartitionList(FALSE);
-	printf("partition_selected = 0x%04x\n",partition_selected);
-	retval = burnpartition(partition_selected);
-	
-#elif defined(MAINTAINMENT)
-	if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
-		retval = burnpartition(0x30);/*is it right*/
-	else
-		retval = burnImage();
-#elif defined(PRODUCTION)
-	partition_selected = 0x3F;/*all partition*/
-#endif
-	transfer_complete();	
-	if(retval != 0)
-	{		
-		SetWindowText(hwndLinStaticInfo,"Operation failed!");
-		ERROR_MESSAGE("Operation failed!Please try it again.");		
-	}
-	else
-	{		
-		/*reboot target*/
-		retval = RebootTarget();
-		if(retval != 0)
-			ERROR_MESSAGE("Reboot target failed!,you need reboot it manully.");
-		else
-		{
-			SetWindowText(hwndLinStaticInfo,"Operation Success!");
-			MessageBox(hwndMain,TEXT("Operation complete!"),szAppName,MB_ICONINFORMATION);
-		}
+		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
+		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
+		return FALSE;
 	}
 	
-#ifdef DEVELOPMENT
-	EnablePartitionList(TRUE);
-#endif
-	EnableWindow(hwndLinPage,TRUE);
-}
-static void OnBtnStopClick(void)
-{
-}
-static void OnBtnRefreshClick(void)
-{
-}
-static void OnBtnEnableTelnetClick(void)
-{
-	int retval = EnableTelnet();
+	retval = burnMFGinit(image);
+
 	if(retval != 0)
-		ERROR_MESSAGE("Enable telnet failed!");
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"MFG init error");
+		snprintf(error_msg,ERROR_INFO_MAX,"MFG init error,Error code is %s.",get_error_info(retval));
+		return FALSE;
+	}
+	return TRUE;
+}
+static int mfg_download(void)
+{	
+	int retval = -1;
+	printf("mfg_download..\n");
+
+	SetDynamicInfo("MFG init");
+	BOOL ret = mfg_init();
+	StopDynamicInfo();
+	if(FALSE == ret)
+	{			
+		goto mfg_download_error;
+	}
+	SetWindowText(hwndInfo,"Waiting for MFG download..");
+	//if(burn_mode == SELECT_MFG_PROGRAMMING)
+		transfer_start();
+	retval = burnMFG();
+	transfer_complete();
+	if(retval != 0)
+	{
+		snprintf(error_info,ERROR_INFO_MAX,"MFG download error.");
+		snprintf(error_msg,ERROR_INFO_MAX,"MFG download error,Error code is %s.",get_error_info(retval));		
+		goto mfg_download_error;
+	}
+		
+	SetDynamicInfo("Waiting for SPL device");
+	Sleep(2000);	
+	StopDynamicInfo();
+	
+	SetWindowText(hwndInfo,"Waiting for SPL download..");	
+	retval = spl_download();	
+	if(retval != 0)
+	{
+		goto mfg_download_error;
+	}		
+	/*mfg dowload complete*/	
+	
+	return 0;
+mfg_download_error:	
+	return -1;
 }
 
-static void OnBtnFileDownload(void)
+static void linux_download_complete_cb(int retval,void *private_data)
+{
+	if(retval == 0)
+	{
+		SetWindowText(hwndInfo,"Complete");
+		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
+	}
+	else
+		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+	
+	g_processing = FALSE;
+	update_ui_resources(TRUE);	
+}
+static void spl_download_complete_cb(int retval,void *private_data)
+{
+	if(retval == 0)
+	{
+		SetWindowText(hwndInfo,"Complete");
+		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
+	}
+	else
+	{
+		//snprintf(error_msg+strlen(error_msg),ERROR_INFO_MAX-strlen(error_msg),"Please reset your device and try it again.");
+		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+	}
+	g_processing = FALSE;
+	update_ui_resources(TRUE);
+}
+static void mfg_download_complete_cb(int retval,void *private_data)
+{
+	if(retval == 0)
+	{
+		SetWindowText(hwndInfo,"Complete");
+		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
+	}
+	else
+	{
+		g_on_batch = FALSE;
+		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+	}
+	g_processing = FALSE;
+	update_ui_resources(TRUE);
+	if(g_on_batch)
+	{
+		update_ui_resources(FALSE);
+		listening_on = IS_LISTENING_ON_MFG;
+		SetDynamicInfo("Waiting for MFG device");
+#ifdef PRODUCTION
+		ShowWindow(hwndMFGBtnDown,FALSE);		
+		EnableWindow(hwndMFGBtnStop,TRUE);
+		ShowWindow(hwndMFGBtnStop,TRUE);
+#endif		
+	}
+	else
+	{
+		ShowWindow(hwndMFGBtnDown,TRUE);
+		ShowWindow(hwndMFGBtnStop,FALSE);
+	}		
+}
+/*********************Nand Programing Button Process***********************/
+static BOOL OnBtnBrowser(void)
+{
+	EnableWindow(hwndTab,FALSE);
+	char image[256];
+	if(GetFileName(image,256) == TRUE)
+	{			
+		SetWindowText(hwndStaticBrowser,image);
+		if(get_image_info(image) == FALSE)
+		{
+			EnableWindow(hwndBtnDown,FALSE);
+			SendMessage(hwndMain,WM_ERROR,-1,0);
+		}
+		else
+		{
+#ifdef DEVELOPMENT
+			SendMessage(hwndMain,WM_DESTROY_PARTITION_LIST,0,0);		
+			SendMessage(hwndMain,WM_CREATE_PARTITION_LIST,0,0);
+#endif
+			reset_ui_resources(SELECT_LINUX_PROGRAMMING);
+			reset_ui_resources(SELECT_SPL_PROGRAMMING);
+			reset_ui_resources(SELECT_MFG_PROGRAMMING);
+			EnableWindow(hwndBtnDown,TRUE);
+		}				
+	}
+	EnableWindow(hwndTab,TRUE);
+	return TRUE;
+}
+
+static int OnBtnRefreshClick(void)//unused
+{
+	return 0;
+}
+static int OnBtnEnableTelnetClick(void)
+{
+#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
+	int ip_count = 4;
+#elif defined(CONFIG_PROJECT_REPEATER_BBA)
+	int ip_count = 2;
+#else
+	int ip_count = 1;
+#endif	
+	int error_flag = 0;
+	int i;
+	int retval = -1;
+	/*save button LinBtnDown's status*/
+	WINDOWINFO info_for_btn_down;
+	info_for_btn_down.cbSize = sizeof(WINDOWINFO);
+	GetWindowInfo(hwndLinBtnDown,&info_for_btn_down);
+	update_ui_resources(FALSE);
+	SetDynamicInfo("EnableTelnet");
+	//EnableTelnet for all ip
+	for(i = 0; i < ip_count; ++i)
+	{
+		retval = EnableTelnet(ip_addr[i]);
+		if(retval != 0)
+			error_flag |= 1<<i;
+	}	
+	StopDynamicInfo();
+	if(error_flag != 0)
+	{
+		/*for example:10.10.0.12 10.10.12.11 success,but 10.10.12.21 10.10.12.22 Failed. it will be output like this
+		* EnableTelnet 10.10.12.21 10.10.12.22 Failed.
+		*/
+		char info[256];
+		strcpy(info,"EnableTelnet ");
+		for(i = 0; i < ip_count; ++i)
+		{			
+			if(error_flag & (1<<i))
+			{
+				strcat(info,ip_addr[i]);
+				strcat(info," ");
+			}
+		}
+		strcat(info,"Failed.");
+		SetWindowText(hwndInfo,info);
+		//ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
+	}
+	else
+		SetWindowText(hwndInfo,"EnableTelnet Success.");
+	update_ui_resources(TRUE);
+	/*restore LinBtnDown's status*/
+	EnableWindow(hwndLinBtnDown,!(info_for_btn_down.dwStyle & WS_DISABLED));
+	
+	return 0;
+}
+
+static int OnBtnFileDownload(void)
 {
 	char file_for_pc[MAX_PATH];
 	char file_for_target[MAX_PATH];
@@ -2066,7 +2557,7 @@ static void OnBtnFileDownload(void)
 	{
 		SetWindowText(hwndFdNotify,"Dest Path can't be empty.");
 		ERROR_MESSAGE("Dest Path can't be empty.");
-		return ;
+		return 0 ;
 	}
 	GetWindowText(hwndFdStaticSrcFile,file_for_pc,MAX_PATH);
 	get_abs_file_name(file_for_target,file_for_pc);
@@ -2075,17 +2566,17 @@ static void OnBtnFileDownload(void)
 	/*Disable Main Window and prepare to download*/
 	EnableWindow(hwndTab,FALSE);
 	SetWindowText(hwndFdNotify,"Init network..");
-	if(network_init() == FALSE)
+	if(linux_init(ini_file_info.ip[0]) == FALSE)
 	{
 		EnableWindow(hwndTab,TRUE);
 		SetWindowText(hwndFdNotify,"Init network error.");
-		return ;
+		return 0;
 	}
 	SetWindowText(hwndFdNotify,"Init network success.");
 	
 	SetWindowText(hwndFdNotify,"Download...");
 #ifdef U3_LIB
-	retval = file_download(file_for_pc,file_for_target);
+	retval = file_download(ini_file_info.ip[0],file_for_pc,file_for_target);
 #else
 	/*read file into buff and call download_file*/		
 	
@@ -2111,8 +2602,7 @@ static void OnBtnFileDownload(void)
 	}
 	printf("before download_file\n");
 	printf("file_for_target:%s\n",file_for_target);	
-	#warning "need remove when libupgrade.dll upgraded"
-	buff[file_len++] = 0;	
+		
 	retval = download_file(buff,file_len,file_for_target);
 	printf("retval = %d\n",retval);
 	printf("after download_file\n");	
@@ -2143,10 +2633,10 @@ open_error:
 malloc_error:
 #endif
 	EnableWindow(hwndTab,TRUE);
-	
+	return 0;
 }
 
-static void OnBtnFileUpload(void)
+static int OnBtnFileUpload(void)
 {
 	char file_for_pc[MAX_PATH];
 	char file_for_target[MAX_PATH];
@@ -2160,7 +2650,7 @@ static void OnBtnFileUpload(void)
 	{
 		SetWindowText(hwndFuNotify,"Src File can't be empty.");
 		ERROR_MESSAGE("Src File can't be empty.");
-		return ;
+		return 0;
 	}
 	printf("file_for_target = %s\n",file_for_target);
 	printf("file_for_pc = %s\n",file_for_pc);
@@ -2170,15 +2660,15 @@ static void OnBtnFileUpload(void)
 	
 	EnableWindow(hwndTab,FALSE);
 	SetWindowText(hwndFuNotify,"Init network..");
-	if(network_init() == FALSE)
+	if(linux_init(ini_file_info.ip[0]) == FALSE)
 	{
 		EnableWindow(hwndTab,TRUE);
 		SetWindowText(hwndFuNotify,"Init network error.");
-		return ;
+		return 0;
 	}
 	SetWindowText(hwndFuNotify,"Upload...");
 #ifdef U3_LIB
-	retval = file_upload(file_for_pc,file_for_target);
+	retval = file_upload(ini_file_info.ip[0],file_for_pc,file_for_target);
 #else
 	/*read file into buff and call download_file*/			
 	
@@ -2236,7 +2726,7 @@ open_error:
 malloc_error:
 #endif
 	EnableWindow(hwndTab,TRUE);
-	
+	return 0;
 }
 /*********************File Transfer Button Process***********************/
 
@@ -2274,10 +2764,13 @@ static BOOL ProcessFileTransferCommand(WPARAM wParam, LPARAM lParam)
 }
 
 static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
-{
+{	
 	
-/*haven't add devipaddr process yet*/	
 	HWND hwnd = (HWND)lParam;
+	/* if(g_processing == FALSE)
+	{
+		CLEAR_INFO();
+	} */
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
 	{
@@ -2287,43 +2780,140 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 			SetWindowText(hwndLinBtnDown,TEXT("Upgrade"));
 		return TRUE;
 	}
+#endif	
+	if(hwnd == hwndLinBtnBrowser)
+	{
+		return OnBtnBrowser();		
+	}
+	else if(hwnd == hwndLinBtnDown){
+#ifndef MAINTAINMENT
+		int i;
+		partition_selected = 0;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}
 #endif
-	
-	if(hwnd == hwndLinBtnCheckImg)	
-		g_background_func = OnBtnCheckImgClick;	
-	else if(hwnd == hwndLinBtnDown)
-		g_background_func = OnBtnDownClick;	
+		if(check_ini() == FALSE)
+		{
+			SendMessage(hwndMain,WM_ERROR,-1,0);
+			return TRUE;
+		}
+		g_background_func = linux_download;
+		g_complete_func = linux_download_complete_cb;
+		g_processing = TRUE;
+		update_ui_resources(FALSE);
+	}
 	else if(hwnd == hwndBtnEnableTelnet)
 		g_background_func = OnBtnEnableTelnetClick;
 	else if(hwnd == hwndLinBtnRefresh)
 		g_background_func = OnBtnRefreshClick;
 	else 
 		return FALSE;
-	WAKE_THREAD_UP();	
+	WAKE_THREAD_UP();
 	return TRUE;
 }
 static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	if(hwnd == hwndSPLBtnCheckImg)	
-		g_background_func = OnBtnCheckImgClick;	
-	else if(hwnd == hwndSPLBtnDown)
-		g_background_func = OnBtnDownClick;	
-	else 
-		return FALSE;
-	WAKE_THREAD_UP();
+	/* if(g_processing == FALSE)
+	{
+		CLEAR_INFO();
+	} */
+	if(hwnd == hwndSPLBtnDown)
+	{
+		int i;
+		partition_selected = 0;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}
+		if(check_ini() == FALSE)
+		{
+			SendMessage(hwndMain,WM_ERROR,-1,0);
+			return TRUE;
+		}
+		update_ui_resources(FALSE);
+		listening_on = IS_LISTENING_ON_SPL;
+		SetDynamicInfo("Waiting for SPL device");		
+	}
+	else if(hwnd == hwndSPLBtnBrowser)
+	{
+		return OnBtnBrowser();
+	}
 	return TRUE;
 }
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	if(hwnd == hwndMFGBtnCheckImg)	
-		g_background_func = OnBtnCheckImgClick;	
-	else if(hwnd == hwndMFGBtnDown)
-		g_background_func = OnBtnDownClick;	
-	else 
-		return FALSE;
-	WAKE_THREAD_UP();
+	/* if(g_processing == FALSE)
+	{
+		CLEAR_INFO();
+	} */
+	if(hwnd == hwndMFGBtnDown)
+	{
+		
+#ifdef DEVELOPMENT
+		int i;
+		partition_selected = 0;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}		
+#endif
+		if(check_ini() == FALSE)
+		{
+			SendMessage(hwndMain,WM_ERROR,-1,0);
+			return TRUE;
+		}
+		update_ui_resources(FALSE);
+		if(CHECKBOX_IS_CLICK(hwndCheckBoxBatch))
+		{
+			g_on_batch = TRUE;							
+		}
+		else
+			g_on_batch = FALSE;
+		listening_on = IS_LISTENING_ON_MFG;
+		SetDynamicInfo("Waiting for MFG device");
+#ifdef PRODUCTION
+		ShowWindow(hwndMFGBtnDown,FALSE);		
+		EnableWindow(hwndMFGBtnStop,TRUE);
+		ShowWindow(hwndMFGBtnStop,TRUE);
+#endif		
+	}
+	else if(hwnd == hwndMFGBtnBrowser)
+	{
+		return OnBtnBrowser();		
+	}
+	else if(hwnd == hwndMFGBtnStop)
+	{		
+		if(g_processing == FALSE)
+		{
+			update_ui_resources(TRUE);
+			listening_on = IS_LISTENING_ON_NOTHING;
+			StopDynamicInfo();
+			CLEAR_INFO();				
+		}		
+		g_on_batch = FALSE;
+		ShowWindow(hwndMFGBtnDown,TRUE);
+		ShowWindow(hwndMFGBtnStop,FALSE);		
+	}
 	return TRUE;
 }
 /*
@@ -2350,8 +2940,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
     switch(message)
     {
         case WM_COMMAND:		
-		if(g_locking == TRUE)
-			break;
+		/* if(g_locking == TRUE)
+			break; */
 		if(hwnd == hwndLinPage)
 			return ProcessLinuxCommand(wParam,lParam);
 		else if(hwnd == hwndSPLPage)
@@ -2367,55 +2957,80 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
         case WM_DESTROY: /* trigger by callback */
             {
                 if (hwnd == hwndMain)
-                {
-                    unregister_notifyer();
+                {                   
 					PostQuitMessage(0);
                 }                
             }
             break;
-        case WM_TIMER: /* trigger by timeout */            
-                
-            return TRUE;
+        case WM_TIMER:
+		switch(wParam)
+		{
+			case TIMER_DYNAMIC_INFO:
+			{
+				TCHAR text[256];
+				strncpy(text,dynamic_info,250);
+				static int count = 0;
+				++count;
+				count %= 6;
+				int i;
+				for(i = 0; i < count; ++i)
+				{
+					text[strlen(dynamic_info) + i] = '.';
+				}
+				text[strlen(dynamic_info) + i] = 0;
+				SetWindowText(hwndDynamic,text);
+			}
+			break;
+		}
+        return TRUE;
+		case WM_CLOSE:
+		return (g_processing == TRUE) ? 0 : DefWindowProc(hwnd, message, wParam, lParam);
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)
             {
-				/*only development have mutiple tab controll*/
+				/*only development tool have mutiple tab controll*/
 #ifdef DEVELOPMENT
-                case TCN_SELCHANGE:
-                    {						
-                        burn_mode = TabCtrl_GetCurSel(hwndTab);
-                        switch(burn_mode)
-						{
-							case SELECT_MFG_PROGRAMMING:
-							ShowWindow(hwndMFGPage,TRUE);
-							ShowWindow(hwndSPLPage,FALSE);
-							ShowWindow(hwndLinPage,FALSE);
-							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_mfg_file.ini";							
-							break;
-							case SELECT_SPL_PROGRAMMING:
-							ShowWindow(hwndMFGPage,FALSE);
-							ShowWindow(hwndSPLPage,TRUE);
-							ShowWindow(hwndLinPage,FALSE);
-							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_user_file.ini";
-							break;
-							case SELECT_LINUX_PROGRAMMING:
-							ShowWindow(hwndMFGPage,FALSE);
-							ShowWindow(hwndSPLPage,FALSE);
-							ShowWindow(hwndLinPage,TRUE);
-							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_user_file.ini";
-							break;
-							case SELECT_FILE_TRANSFER:
-							ShowWindow(hwndMFGPage,FALSE);
-							ShowWindow(hwndSPLPage,FALSE);
-							ShowWindow(hwndLinPage,FALSE);
-							ShowWindow(hwndFileTransferPage,TRUE);
-							ini_file = "for_user_file.ini";
-							break;
-						}						
-                    }
+                case TCN_SELCHANGE:					
+					burn_mode = TabCtrl_GetCurSel(hwndTab);
+					switch(burn_mode)
+					{
+						case SELECT_MFG_PROGRAMMING:
+						ShowWindow(hwndMFGPage,TRUE);
+						ShowWindow(hwndSPLPage,FALSE);
+						ShowWindow(hwndLinPage,FALSE);
+						ShowWindow(hwndFileTransferPage,FALSE);
+						ini_file = "for_mfg_file.ini";
+						reset_general_handler(SELECT_MFG_PROGRAMMING);
+						break;
+						case SELECT_SPL_PROGRAMMING:
+						ShowWindow(hwndMFGPage,FALSE);
+						ShowWindow(hwndSPLPage,TRUE);
+						ShowWindow(hwndLinPage,FALSE);
+						ShowWindow(hwndFileTransferPage,FALSE);
+						ini_file = "for_mfg_file.ini";
+						reset_general_handler(SELECT_SPL_PROGRAMMING);
+						break;
+						case SELECT_LINUX_PROGRAMMING:
+						ShowWindow(hwndMFGPage,FALSE);
+						ShowWindow(hwndSPLPage,FALSE);
+						ShowWindow(hwndLinPage,TRUE);
+						ShowWindow(hwndFileTransferPage,FALSE);						
+						ini_file = "for_user_file.ini";
+						reset_general_handler(SELECT_LINUX_PROGRAMMING);
+						
+						break;
+						case SELECT_FILE_TRANSFER:
+						ShowWindow(hwndMFGPage,FALSE);
+						ShowWindow(hwndSPLPage,FALSE);
+						ShowWindow(hwndLinPage,FALSE);
+						ShowWindow(hwndFileTransferPage,TRUE);
+						ini_file = NULL;							
+						hwndInfo = hwndFdNotify;
+						hwndIpInfo = NULL;
+						hwndProcessInfo = NULL;
+						break;
+					}						
+                    
                     return TRUE;
 #endif
                 default:
@@ -2425,9 +3040,46 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 
         case WM_DEVICECHANGE: /* trigger by USB cable insert */
 		{
-			/*needed by MFG burning*/
-			int retval;				
+			if(wParam == DBT_DEVICEARRIVAL && 
+			((PDEV_BROADCAST_HDR)lParam)->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
+			{
+				GUID insert_dev = ((PDEV_BROADCAST_DEVICEINTERFACE)lParam)->dbcc_classguid;
+				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
+				listening_on == IS_LISTENING_ON_SPL )
+				{
+					//spl device insert					
+					StopDynamicInfo();
+					listening_on = IS_LISTENING_ON_NOTHING;
+					g_background_func = spl_download;
+					g_complete_func = spl_download_complete_cb;
+					g_processing = TRUE;
+					WAKE_THREAD_UP();
+					
+				}
+				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)) &&
+				listening_on == IS_LISTENING_ON_MFG)
+				{
+					//mfg device insert
+					StopDynamicInfo();
+					listening_on = IS_LISTENING_ON_NOTHING;
+					g_background_func = mfg_download;
+					g_complete_func = mfg_download_complete_cb;
+					g_processing = TRUE;
+					WAKE_THREAD_UP();					
+				}
+				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
+				{
+					//lan device insert	
+					
+				}
+			}				
 		}
+		break;
+		case WM_CREATE_PARTITION_LIST:
+		CreatePartitionList();
+		break;
+		case WM_DESTROY_PARTITION_LIST:
+		DestoryPartitionList();
 		break;
 		case WM_CREATE_PROGRESS_BAR:
 		PopProgressBar();
@@ -2435,14 +3087,26 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		case WM_DESTROY_PROGRESS_BAR:
 		DestoryProgressBar();
 		break;
-		/*just print the error information for errcode*/
+		
 		case WM_ERROR:
-		ERROR_MESSAGE("%s",get_error_info(wParam));
-		break;
+		if(wParam != -1)//appending error code string
+		{
+			snprintf(error_msg+strlen(error_msg),ERROR_INFO_MAX-strlen(error_msg)," Error code is: %s",get_error_info(wParam));
+		}		
+		if(error_info[0] != 0)
+			SetWindowText(hwndInfo,error_info);
+		if(error_msg[0] != 0)
+			ERROR_MESSAGE(error_msg);
+		error_info[0] = 0;
+		error_msg[0] = 0;
+		break;		
 		case WM_INVOKE_CALLBACK:
 		if (g_complete_func)
 		{
 			g_complete_func(g_retval, g_complete_private_data);
+			g_complete_func = NULL;
+			g_retval = 0;
+			g_complete_private_data = NULL;
 		}
 		break;
         default:
@@ -2622,7 +3286,6 @@ static void InitFileTransferWindow(void)
     ShowWindow(hwndFileTransferPage, FALSE);
 
 #endif
-
     return;
 }
 
@@ -2659,6 +3322,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         MessageBox(NULL, TEXT ("Can not init debug "APP_TITLE), szAppName, MB_ICONERROR);
         return 0 ;
     }
+	
+	/*check if ap's directory exsit*/
+
+#ifdef MAINTAINMENT
+	if(_access("DLL",0))
+	{
+		MessageBox(NULL,TEXT("DLL lost"),szAppName,MB_ICONERROR);
+		return 0;
+	}
+
+	if(_access("sys",0))
+	{
+		MessageBox(NULL,TEXT("sys lost"),szAppName,MB_ICONERROR);
+		return 0;
+	}
+#endif
 	//Initialize net
 	WSADATA wsaData;
     int retval;
@@ -2668,6 +3347,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         printf("%s_%d: WSAStartup() error, error code is %d\n", __FILE__, __LINE__, WSAGetLastError());
         return 0;
     }
+	open_debug_log();
     g_event = CreateEvent(NULL, TRUE, FALSE, NULL); // ManualReset
     if (StartThread() == FALSE)
     {
@@ -2676,13 +3356,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         return 0;
     }
 
-    g_event_wait = CreateEvent(NULL, TRUE, FALSE, NULL); // ManualReset
-    if (start_wait_thread() == FALSE)
-    {
-        MessageBox(NULL, TEXT ("Create wait thread error"), szAppName, MB_ICONERROR);
-        ExitDebugConsole();
-        return 0;
-    }
 
     /* Application init */
     if (InitApplication() == FALSE)
@@ -2705,17 +3378,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	InitSPLWindow();
 	InitMFGWindow();
 	InitFileTransferWindow();
+	reset_general_handler(SELECT_LINUX_PROGRAMMING);
 #elif defined(MAINTAINMENT)
 	InitLinuxWindow();
+	reset_general_handler(SELECT_LINUX_PROGRAMMING);	
 #elif defined(PRODUCTION)
 	InitMFGWindow();
+	reset_general_handler(SELECT_MFG_PROGRAMMING);
 #endif	
     register_notifyer();
 
     /* Show the window and send a WM_PAINT message to the window procedure */
     ShowWindow(hwndMain, iCmdShow);
-    UpdateWindow(hwndMain);
-	
+    UpdateWindow(hwndMain);	
     /* Start the message loop */
     while ((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
     {
@@ -2733,10 +3408,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
             DispatchMessage(&msg);
         }
     }
-  
-	free(image_buffer);
-    CloseHandle(g_event);
-    CloseHandle(g_event_wait);
+	
+	unregister_notifyer();
+	
+    CloseHandle(g_event);   
 
     /* Receive the WM_QUIT message, release mutex and return the exit code to the system */
     CloseHandle(hMutex);

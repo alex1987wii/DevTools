@@ -90,7 +90,12 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 /*user message definition which is not conflict with "devToolsUI_private.h"*/
 #define WM_CREATE_PROGRESS_BAR		(WM_USER+110)
 #define WM_DESTROY_PROGRESS_BAR		(WM_USER+111)
-#define WM_ERROR					(WM_USER+112)
+#define WM_CREATE_PARTITION_LIST	(WM_USER+112)
+#define WM_DESTROY_PARTITION_LIST	(WM_USER+113)
+#define WM_ERROR					(WM_USER+114)
+
+#define DISABLE						0
+#define ENABLE						1
 
 /*stage for progress_reply_status_get  */
 #define PROGRESS_STATUS_PREPARING     (0)
@@ -200,10 +205,8 @@ static BOOL get_image_info(const char*image)
 	total_partition = image_header.total_partitions;
 	int i;
 	for(i = 0; i < total_partition; ++i)
-	{
-		printf("image_header.partition[%d].partition_name = %s\n",i,partition_name[i]);
+	{		
 		memcpy(partition_name[i],image_header.partition[i].partition_name,UNI_MAX_PARTITION_NAME_LEN);
-		printf("partition[%d] = %s\n",i,partition_name[i]);
 	}
 	cbs_per_line = total_partition/2;
 	return TRUE;
@@ -239,9 +242,11 @@ static int burn_mode = SELECT_LINUX_PROGRAMMING;
 #elif defined(MAINTAINMENT)
 #define APP_TITLE          "Unication Maintenance Tools"
 static const char *ini_file = "for_user_file.ini";
+static const int burn_mode = SELECT_LINUX_PROGRAMMING;
 #elif defined(PRODUCTION)
 #define APP_TITLE          "Unication NandFlash Programmer"
 static const char *ini_file = "for_mfg_file.ini";
+static const int burn_mode = SELECT_MFG_PROGRAMMING;
 #endif
 
 #define UNI_APP_MUTEX      "Unication Dev Tools"
@@ -414,7 +419,7 @@ void ExitDebugConsole( void )
 
 #endif
 
-#ifdef DEVELOPMENT
+
 static inline void CreatePartitionList(void)
 {
 	//create partition box
@@ -424,11 +429,20 @@ static inline void CreatePartitionList(void)
 		hwndPartitionCheckBox[i] = CreateWindow(TEXT("button"),
 		partition_name[i],
 		WS_CHILD | BS_AUTOCHECKBOX | WS_VISIBLE,
-		partition_x_pos + (i%cbs_per_line)*(WIDTH_CHECKBOX+15) + X_MARGIN,
+		partition_x_pos + (i%cbs_per_line)*(WIDTH_CHECKBOX) + X_MARGIN,
 		partition_y_pos + (i/cbs_per_line)*HEIGHT_CONTROL + Y_MARGIN,
 		WIDTH_CHECKBOX, HEIGHT_CONTROL,
 		hwndLinPage,NULL,
 		hInst,NULL);		
+	}
+}
+static inline void DestoryPartitionList(void)
+{
+	int i;
+	for(i = 0; i < total_partition; ++i)
+	{
+		DestroyWindow(hwndPartitionCheckBox[i]);
+		hwndPartitionCheckBox[i] = NULL;		
 	}
 }
 static inline void ShowPartitionList(BOOL enable)
@@ -447,7 +461,7 @@ static inline void EnablePartitionList(BOOL enable)
 		EnableWindow(hwndPartitionCheckBox[i],enable);
 	}
 }
-#endif
+
 
 
 /*get src 's filename concatenate to dest
@@ -550,7 +564,7 @@ static inline BOOL parse_ini_file(const char *file)
 		return FALSE;
 	}
 	if(iniparser_getnsec(ini_config) != 1)
-	{		
+	{
 		goto EXIT;
 	}
 	ip = iniparser_getstring(ini_config,"Options:ip",NULL);
@@ -791,9 +805,36 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	unsigned short percent = 0;
 	unsigned short status = 0;
 	unsigned char index = 0;	
-	TCHAR text[256];	
+	TCHAR text[256];
+	HWND hwndInfo = NULL;
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
-	
+#ifdef DEVELOPMENT
+	switch(burn_mode)
+		{
+			case SELECT_FILE_TRANSFER:
+			/*file transfer don't get progress yet*/
+			break;
+			case SELECT_LINUX_PROGRAMMING:
+			hwndInfo = hwndLinStaticInfo;
+			break;
+			case SELECT_SPL_PROGRAMMING:
+			hwndInfo = hwndSPLStaticInfo;
+			break;
+			case SELECT_MFG_PROGRAMMING:
+			hwndInfo = hwndMFGStaticInfo;
+			break;
+#ifdef ENABLE_DEBUG
+			default:
+			ERROR_MESSAGE("Unhandled burn_mode");
+			break;
+#endif
+		}
+#elif defined(PRODUCTION)
+		hwndInfo = hwndMFGStaticInfo;
+#elif defined(MAINTAINMENT)
+		hwndInfo = hwndLinStaticInfo;
+#endif
+
 	while(1)
 	{
 		Sleep(250);
@@ -801,6 +842,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		{
 			if(hwndPop)
 				SendMessage(hwndMain,WM_DESTROY_PROGRESS_BAR,0,0);
+			SetWindowText(hwndInfo,"Transfer complete.");
 			break;
 		}
 		retval = progress_reply_status_get(&index,&percent,&status);
@@ -813,9 +855,8 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 			break;
 		}
 		if(hwndPop == NULL && status != 0)		
-			SendMessage(hwndMain,WM_CREATE_PROGRESS_BAR,0,0);
-		
-#if 0
+			SendMessage(hwndMain,WM_CREATE_PROGRESS_BAR,0,0);		
+
 		switch(status)
 		{
 			case PROGRESS_STATUS_PREPARING:
@@ -830,34 +871,8 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 			snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],partition_name[index],percent);
 			break;
 		}
-#ifdef DEVELOPMENT
-		switch(burn_mode)
-		{
-			case SELECT_FILE_TRANSFER:
-			/*file transfer don't get progress yet*/
-			break;
-			case SELECT_LINUX_PROGRAMMING:
-			SetWindowText(hwndLinStaticInfo,text);
-			break;
-			case SELECT_SPL_PROGRAMMING:
-			SetWindowText(hwndSPLStaticInfo,text);
-			break;
-			case SELECT_MFG_PROGRAMMING:
-			SetWindowText(hwndMFGStaticInfo,text);
-			break;
-#ifdef ENABLE_DEBUG
-			default:
-			ERROR_MESSAGE("Unhandled burn_mode");
-			break;
-#endif
-		}
-#elif defined(PRODUCTION)
-		SetWindowText(hwndMFGStaticInfo,text);
-#elif defined(MAINTAINMENT)
-		SetWindowText(hwndLinStaticInfo,text);
-#endif
-
-#endif
+		SetWindowText(hwndInfo,text);
+		
 		if(hwndPop)
 		{
 			snprintf(text,256,"%s %s",stage[status],partition_name[index]);
@@ -1758,79 +1773,39 @@ static BOOL InitMainWindow(void)
     return TRUE;
 }
 
-/*}*/
-/*******************************************************/
-/*                  main functions                     */
-/*******************************************************//*{*/
 
-static void FreeHandler(HWND *phandler)
+
+void update_ui_resources(int enable)
 {
-    int i;
-
-    for(i=0; i<UNI_MAX_PARTITION; i++)
-    {
-        if (phandler[i] != NULL)
-        {
-            DestroyWindow(phandler[i]);
-            phandler[i] = NULL;
-        }
-    }
+	switch(burn_mode)
+	{
+		case SELECT_LINUX_PROGRAMMING:
+		EnableWindow(hwndLinBtnCheckImg,enable);
+		EnableWindow(hwndLinBtnDown,enable);
+		EnableWindow(hwndLinBtnRefresh,enable);
+		EnableWindow(hwndCheckBoxDelete,enable);
+		EnableWindow(hwndBtnEnableTelnet,enable);
+		EnableWindow(hwndCheckBoxSkipBatCheck,enable);
+		
+#ifdef DEVELOPMENT
+		EnablePartitionList(enable);
+#endif
+		break;
+		case SELECT_SPL_PROGRAMMING:
+		//EnableWindow(hwndLinBtnCheckImg,enable);
+		EnableWindow(hwndSPLBtnDown,enable);		
+		break;
+		case SELECT_MFG_PROGRAMMING:
+		EnableWindow(hwndMFGBtnDown,enable);
+		EnableWindow(hwndCheckBoxBatch,enable);
+		EnableWindow(hwndMFGBtnStop,enable);
+		break;
+		case SELECT_FILE_TRANSFER:		
+		break;
+	}
+	EnableWindow(hwndMain,enable);
 }
 
-static void FreezeHandler(HWND *phandler, BOOL freeze)
-{
-    int i;
-
-    for(i=0; i<UNI_MAX_PARTITION; i++)
-    {
-        if (phandler[i] != NULL)
-        {
-            EnableWindow(phandler[i], (!(freeze)));
-        }
-    }
-}
-#if 0
-void update_ui_resources(int i)
-{
-    if (/*g_mi.is_waiting*/i == 1) {
-#ifdef DEVELOPER
-        FreezeHandler(hwndCheckBox, TRUE);
-#endif
-        EnableWindow(hwndLinBtnCheckImg, FALSE);
-        EnableWindow(hwndCheckBoxBatch, FALSE);
-        //EnableWindow(hwndCheckbox1, FALSE);
-        EnableWindow(hwndLinBtnDown, FALSE);
-        EnableWindow(hwndBtnEnableTelnet, FALSE);
-
-#ifdef PRODUCTION
-        update_btn_stop(1);
-#else
-        EnableWindow(hwndTab, FALSE);
-#endif
-    }
-    else
-    {
-#ifdef DEVELOPER
-        FreezeHandler(hwndCheckBox, FALSE);
-#endif
-        EnableWindow(hwndLinBtnCheckImg, TRUE);
-        EnableWindow(hwndCheckBoxBatch, TRUE);
-        //EnableWindow(hwndCheckbox1, TRUE);
-        EnableWindow(hwndLinBtnDown, TRUE);
-        EnableWindow(hwndBtnEnableTelnet,TRUE);
-
-#ifdef PRODUCTION
-        update_btn_stop(0);
-#else
-        EnableWindow(hwndTab, TRUE);
-#endif
-
-#if ( defined (PRODUCTION) || defined (MAINTAINMENT) )
-       FreezeHandler(hwndCheckBox, TRUE);
-#endif
-    }
-}
-#endif
 
 static void PopProgressBar( void )
 {   
@@ -1870,25 +1845,7 @@ static BOOL network_init(void)
 	int retval = -1;	
 	int image_len = 0;
 	unsigned char *buff = NULL;
-	/*read the ini file and parse it into struct*/
 	
-	if(get_file_len(ini_file) <= 0)
-	{
-		ERROR_MESSAGE("%s lost.",ini_file);
-		return FALSE;
-	}
-	if(parse_ini_file(ini_file) == FALSE)
-	{
-		ERROR_MESSAGE("%s syntax error.",ini_file);
-		return FALSE;
-	}
-	printf("ini_file = %s\n",ini_file);
-	printf("ip = %s, image = %s\n",ini_file_info.ip,ini_file_info.name_of_image);
-	if(get_image_info(ini_file_info.name_of_image) == FALSE)
-	{
-		ERROR_MESSAGE("get image partition failed.");
-		return FALSE;
-	}
 	image_len = get_file_len(ini_file_info.name_of_image);
 	if(image_len <= 0)
 	{
@@ -1914,6 +1871,7 @@ static BOOL network_init(void)
 		ERROR_MESSAGE("%s read error.",ini_file_info.name_of_image);
 		return FALSE;
 	}
+	printf("before init\n");
 	/*make WinUpgradeLibInit run in backgroud_func*/
 #ifdef DEVELOPMENT
 	switch(burn_mode)
@@ -1948,13 +1906,15 @@ static BOOL network_init(void)
 		/*just print the errcode string*/
 		ERROR_MESSAGE("%s",get_error_info(retval));
 		return FALSE;
-	}	
+	}
+	
+#if 0	
+/*let invoker to process according the return value*/
 #ifdef DEVELOPMENT
 	switch(burn_mode)
 	{
 		case SELECT_LINUX_PROGRAMMING:
-		printf("Linux PROGRAMMING for developer.\n");
-		CreatePartitionList();
+		printf("Linux PROGRAMMING for developer.\n");		
 		//enable Download button
 		EnableWindow(hwndLinBtnDown,TRUE);
 		break;
@@ -1972,15 +1932,44 @@ static BOOL network_init(void)
 	EnableWindow(hwndLinBtnDown,TRUE);
 #elif defined(PRODUCTION)
 	EnableWindow(hwndMFGBtnDown,TRUE);		
-#endif		
+#endif
+
+#endif
+	
 	return TRUE;
 }
-
+static inline BOOL check_ini(void)
+{
+	/*read the ini file and parse it into struct*/
+	if(get_file_len(ini_file) <= 0)
+	{
+		ERROR_MESSAGE("%s lost.",ini_file);
+		return FALSE;
+	}
+	if(parse_ini_file(ini_file) == FALSE)
+	{
+		ERROR_MESSAGE("%s syntax error.",ini_file);
+		return FALSE;
+	}
+	printf("ini_file = %s\n",ini_file);
+	printf("ip = %s, image = %s\n",ini_file_info.ip,ini_file_info.name_of_image);
+	if(get_image_info(ini_file_info.name_of_image) == FALSE)
+	{
+		ERROR_MESSAGE("get image partition failed.check if image file exsit.");
+		return FALSE;
+	}
+	return TRUE;
+}
 /*********************Nand Programing Button Process***********************/
 static void OnBtnCheckImgClick(void)
 {
-	EnableWindow(hwndMain,FALSE);
-	network_init();
+	/*only invoke by developer tools for linux*/
+	EnableWindow(hwndMain,FALSE);	
+	if(check_ini() == TRUE)
+	{
+		SendMessage(hwndMain,WM_CREATE_PARTITION_LIST,0,0);
+		EnableWindow(hwndLinBtnDown,TRUE);
+	}		
 	EnableWindow(hwndMain,TRUE);
 }
 
@@ -1994,17 +1983,49 @@ static void OnBtnDownClick(void)
 	*/
 	int retval = -1;
 	int partition_selected = 0;
-	
-	transfer_start();
+	HWND hwndInfo = NULL;
+	int i = 0;	
+#ifdef DEVELOPMENT
+	switch(burn_mode)
+	{
+		case SELECT_LINUX_PROGRAMMING:
+		hwndInfo = hwndLinStaticInfo;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return ;
+		}
+		break;
+		case SELECT_SPL_PROGRAMMING:
+		hwndInfo = hwndSPLStaticInfo;
+		break;
+		case SELECT_MFG_PROGRAMMING:
+		hwndInfo = hwndMFGStaticInfo;
+		break;
+	}
+#elif defined(MAINTAINMENT)
+	hwndInfo = hwndLinStaticInfo;
+#elif defined(PRODUCTION)
+	hwndInfo = hwndMFGStaticInfo;
+#endif
+	SetWindowText(hwndInfo,"Waiting for target reboot into upgrade mode..");
+	if(FALSE == network_init())
+	{
+		SetWindowText(hwndInfo,"Error occurs,please try it again.");
+		return ;
+	}
+	SetWindowText(hwndInfo,"Init success.");
+	transfer_start();/*start a transfer thread*/
 	EnableWindow(hwndLinPage,FALSE);	
 	
 #ifdef DEVELOPMENT
-	int i;
-	for(i = 0; i < total_partition;++i)
-	{
-		partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
-	}
+	
 	EnablePartitionList(FALSE);
+	
 	printf("partition_selected = 0x%04x\n",partition_selected);
 	retval = burnpartition(partition_selected);
 	
@@ -2019,19 +2040,20 @@ static void OnBtnDownClick(void)
 	transfer_complete();	
 	if(retval != 0)
 	{		
-		SetWindowText(hwndLinStaticInfo,"Operation failed!");
+		SetWindowText(hwndInfo,"Operation failed!");
 		ERROR_MESSAGE("Operation failed!Please try it again.");		
 	}
 	else
 	{		
 		/*reboot target*/
+		SetWindowText(hwndInfo,"Rebooting target..");
 		retval = RebootTarget();
 		if(retval != 0)
 			ERROR_MESSAGE("Reboot target failed!,you need reboot it manully.");
 		else
 		{
-			SetWindowText(hwndLinStaticInfo,"Operation Success!");
-			MessageBox(hwndMain,TEXT("Operation complete!"),szAppName,MB_ICONINFORMATION);
+			SetWindowText(hwndInfo,"Operation Success!");
+			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
 		}
 	}
 	
@@ -2305,9 +2327,8 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	if(hwnd == hwndSPLBtnCheckImg)	
-		g_background_func = OnBtnCheckImgClick;	
-	else if(hwnd == hwndSPLBtnDown)
+		
+	if(hwnd == hwndSPLBtnDown)
 		g_background_func = OnBtnDownClick;	
 	else 
 		return FALSE;
@@ -2316,10 +2337,8 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 }
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 {
-	HWND hwnd = (HWND)lParam;
-	if(hwnd == hwndMFGBtnCheckImg)	
-		g_background_func = OnBtnCheckImgClick;	
-	else if(hwnd == hwndMFGBtnDown)
+	HWND hwnd = (HWND)lParam;	
+	if(hwnd == hwndMFGBtnDown)
 		g_background_func = OnBtnDownClick;	
 	else 
 		return FALSE;
@@ -2428,6 +2447,12 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			/*needed by MFG burning*/
 			int retval;				
 		}
+		break;
+		case WM_CREATE_PARTITION_LIST:
+		CreatePartitionList();
+		break;
+		case WM_DESTROY_PARTITION_LIST:
+		DestoryPartitionList();
 		break;
 		case WM_CREATE_PROGRESS_BAR:
 		PopProgressBar();

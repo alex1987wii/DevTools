@@ -93,6 +93,7 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define WM_CREATE_PARTITION_LIST	(WM_USER+112)
 #define WM_DESTROY_PARTITION_LIST	(WM_USER+113)
 #define WM_ERROR					(WM_USER+114)
+#define WM_STAGE_COMPLETE			(WM_USER+115)
 
 #define DISABLE						0
 #define ENABLE						1
@@ -167,8 +168,11 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 
 
 /********************************************************************************/
-#if (defined(CONFIG_PROJECT_U3) || defined(CONFIG_PROJECT_U3_2ND))
+#if (defined(CONFIG_PROJECT_U3))
 #define PROJECT			"U3"
+#define U3_LIB
+#elif defined(CONFIG_PROJECT_U3_2ND)
+#define PROJECT			"U3_2ND"
 #define U3_LIB
 #elif defined CONFIG_PROJECT_U4
 #define PROJECT			"U4"
@@ -189,30 +193,6 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 static char partition_name[UNI_MAX_PARTITION][UNI_MAX_PARTITION_NAME_LEN];
 static int total_partition = 0;
 static int cbs_per_line = 0;
-static BOOL get_image_info(const char*image)
-{
-	FILE *fp = fopen(image,"rb");
-	if(fp == NULL)
-		return FALSE;
-	uni_image_header_t image_header;
-		
-	if(1 != fread(&image_header,sizeof(uni_image_header_t),1,fp))
-	{
-		fclose(fp);
-		return FALSE;
-	}
-	fclose(fp);
-	/*make some check if it's valid image,the init function in libupgrade will do that,but i want get partition info first*/
-	#warning "need finish"
-	total_partition = image_header.total_partitions;
-	int i;
-	for(i = 0; i < total_partition; ++i)
-	{		
-		memcpy(partition_name[i],image_header.partition[i].partition_name,UNI_MAX_PARTITION_NAME_LEN);
-	}
-	cbs_per_line = total_partition/2;
-	return TRUE;
-}
 
 static HWND hwndPartitionCheckBox[UNI_MAX_PARTITION] = {NULL,};
 int partition_x_pos = 0;
@@ -252,22 +232,27 @@ static const int burn_mode = SELECT_MFG_PROGRAMMING;
 #endif
 
 #define UNI_APP_MUTEX      "Unication Dev Tools"
-typedef void (*background_func)(void);
+typedef int (*background_func)(void);
 typedef void (*complete_func)(int retval,void *private_data);
-static background_func g_background_func = NULL;
+static background_func g_background_func = NULL;/*INVOKE by BackGroundThread*/
 static BOOL g_transfer_complete = FALSE;
-static complete_func g_complete_func = NULL;
+static complete_func g_complete_func = NULL;/*INVOKE by WM_INVOKE_CALLBACK*/
 static void *g_complete_private_data = NULL;
 static int g_locking = 0;
 static int g_retval = 0;
+static int partition_selected = 0;
+static BOOL g_on_batch = FALSE;
+#define IS_LISTENING_ON_NOTHING   (0)
+#define IS_LISTENING_ON_MFG       (1)
+#define IS_LISTENING_ON_SPL       (2)
 
-static char work_path[MAX_PATH];
+static int listening_on = IS_LISTENING_ON_NOTHING;
+
+static char work_path[MAX_PATH];/*the path for this program*/
+
 
 static HANDLE g_event = NULL;    // event
 static HANDLE g_hTransfer = NULL;
-
-static HANDLE g_event_wait = NULL;    // event
-static HANDLE g_h_wait = NULL;
 
 TCHAR szAppName[] = TEXT(APP_TITLE);
 
@@ -305,6 +290,7 @@ typedef struct _ini_file_info
 {
     char ip[16]; // xxx.xxx.xxx.xxx
     char name_of_image[MAX_PATH];
+	char name_of_rescue_image[MAX_PATH];
 } ini_file_info_t;
 
 static ini_file_info_t ini_file_info;
@@ -481,6 +467,42 @@ static inline void reset_ui_resources(void)
 #endif
 }
 
+static BOOL get_image_info(const char*image)
+{
+	char image_type[UNI_MAX_REL_VERSION_LEN];
+	FILE *fp = fopen(image,"rb");
+	if(fp == NULL)
+	{
+		ERROR_MESSAGE("%s not exsit",image);
+		return FALSE;
+	}
+	uni_image_header_t image_header;
+		
+	if(1 != fread(&image_header,sizeof(uni_image_header_t),1,fp))
+	{
+		fclose(fp);		
+		return FALSE;
+	}
+	fclose(fp);
+	printf("image_header.image_version = %s\n",image_header.image_version);
+	printf("image_header.release_version = %s\n",image_header.release_version);
+	/*make some check if it's valid image,the init function in libupgrade will do that,but i want get partition info first*/
+	memcpy(image_type,image_header.release_version,UNI_MAX_REL_VERSION_LEN);
+	strtok(image_type,";");
+	if(strcasecmp(image_type,PROJECT))
+	{
+		ERROR_MESSAGE("Invalid image:%s",image);
+		return FALSE;
+	}
+	total_partition = image_header.total_partitions;
+	int i;
+	for(i = 0; i < total_partition; ++i)
+	{		
+		memcpy(partition_name[i],image_header.partition[i].partition_name,UNI_MAX_PARTITION_NAME_LEN);
+	}
+	cbs_per_line = total_partition/2;
+	return TRUE;
+}
 
 /*get src 's filename concatenate to dest
 * dest is linux filename，
@@ -510,8 +532,7 @@ static inline int get_file_len(const char *file)
 	int retval = -1;
 	FILE *fp = fopen(file,"rb");
 	if(fp == NULL)
-	{
-		retval = ERROR_CODE_OPEN_FILE_ERROR;
+	{		
 		return retval;
 	}
 	fseek(fp,0,SEEK_END);
@@ -574,7 +595,7 @@ static inline int EnableTelnet()
 
 static inline BOOL parse_ini_file(const char *file)
 {	
-	char *ip,*image;
+	char *ip,*image,*rescue_image;
 	/*read the ini file and parse it into struct*/
 	dictionary *ini_config = iniparser_load(file);
 	if(ini_config == NULL)
@@ -587,10 +608,15 @@ static inline BOOL parse_ini_file(const char *file)
 	}
 	ip = iniparser_getstring(ini_config,"Options:ip",NULL);
 	image = iniparser_getstring(ini_config,"Options:image",NULL);
+	rescue_image = iniparser_getstring(ini_config,"Options:rescue_image",NULL);	
 	if(ip != NULL && image != NULL && strlen(ip) < 16 && strlen(image) < MAX_PATH)
 	{		
 		strcpy(ini_file_info.ip,ip);
 		strcpy(ini_file_info.name_of_image,image);
+		if(rescue_image)
+			strcpy(ini_file_info.name_of_rescue_image,rescue_image);
+		else
+			ini_file_info.name_of_rescue_image[0] = 0;
 		iniparser_freedict(ini_config);
 		return TRUE;
 	}
@@ -599,6 +625,25 @@ EXIT:
 	return FALSE;	
 }
 
+static inline BOOL check_ini(void)
+{
+	/*read the ini file and parse it into struct*/
+	if(get_file_len(ini_file) <= 0)
+	{
+		ERROR_MESSAGE("%s lost.",ini_file);
+		return FALSE;
+	}
+	if(parse_ini_file(ini_file) == FALSE)
+	{
+		ERROR_MESSAGE("%s syntax error.",ini_file);
+		return FALSE;
+	}
+	printf("ini_file = %s\n",ini_file);
+	printf("ip = %s\nimage = %s\n",ini_file_info.ip,ini_file_info.name_of_image);
+	printf("rescue_image = %s\n",ini_file_info.name_of_rescue_image);
+	
+	return get_image_info(ini_file_info.name_of_image);
+}
 static void ChangeProgressBar(int percent)
 {
     
@@ -757,55 +802,6 @@ static void unregister_notifyer(void)
     usbChangeNotificationUnRegister(&ad6900_mfg);
 }
 
-FILE *open_file_for_readonly(const char *filename)
-{
-    FILE *fptr = fopen(filename, "rb");
-    return fptr;
-}
-
-
-#define START_WAITING() do { g_mi.is_waiting = 1; SetEvent(g_event_wait); } while (0)
-#define STOP_WAITING()  do { g_mi.is_waiting = 0; } while (0)
-
-
-static inline void start_timer(int reason, int set_time_us)
-{
-   
-}
-
-static inline void stop_timer(int reason)
-{
-    
-}
-
-void reset_all_timers (void)
-{
-   
-}
-
-static void show_waiting()
-{
-    SetWindowText(hwndLinStaticInfo, "Processing               ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing...            ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing... ...        ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing    ... ...    ");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing        ... ...");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing            ...");
-    Sleep(500);
-    SetWindowText(hwndLinStaticInfo, "Processing               ");
-    Sleep(500);
-}
-
-
-static DWORD WINAPI waiting_thread()
-{	
-    return 0;
-}
 
 #define WAKE_THREAD_UP() do {SetEvent(g_event); } while (0)
 
@@ -926,7 +922,7 @@ static inline void transfer_complete(void)
  */
 static DWORD WINAPI BackGroundThread(LPVOID lpParam)
 {
-	
+	int retval = -1;
 	while(1)
 	{
 		WaitForSingleObject(g_event,INFINITE);
@@ -937,11 +933,14 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
 			g_locking = TRUE;
             if(g_background_func)
 			{
-				g_background_func();
-				g_background_func = NULL;
-			}
+				retval = g_background_func();
+				if(retval != 0)
+					PostMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+				else
+					PostMessage(hwndMain,WM_STAGE_COMPLETE,0,0);
+			}			
 			g_locking = FALSE;			
-        }
+        }	
 		       
 	}	
     return 0;
@@ -1184,7 +1183,7 @@ static void InitLinuxWindow(void)
 
     relative_x = GBOX1_START_X + X_MARGIN;
 	relative_y = start_y_of_Groupbox2 + Y_MARGIN*3;
-#ifdef MAINTAINMENT
+#if (defined(MAINTAINMENT) && !defined(U3_LIB))
 	hwndCheckBoxDelete = CreateWindow( TEXT("button"), "Delete User Data",
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             relative_x, relative_y,
@@ -1201,7 +1200,7 @@ static void InitLinuxWindow(void)
     relative_y += HEIGHT_CONTROL + 2*Y_MARGIN;
 #endif
 
-#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
+#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
 	
 	hwndLinIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
@@ -1786,8 +1785,19 @@ void update_ui_resources(int enable)
 		case SELECT_MFG_PROGRAMMING:
 		EnableWindow(hwndMFGPage,enable);
 		EnableWindow(hwndMFGBtnDown,enable);
-		EnableWindow(hwndCheckBoxBatch,enable);
-		EnableWindow(hwndMFGBtnStop,enable);
+		EnableWindow(hwndCheckBoxBatch,enable);	
+			
+		if(g_on_batch){
+			ShowWindow(hwndMFGBtnDown,DISABLE);
+			EnableWindow(hwndMFGBtnStop,ENABLE);
+			ShowWindow(hwndMFGBtnStop,ENABLE);
+		}
+		else
+		{
+			ShowWindow(hwndMFGBtnDown,ENABLE);
+			EnableWindow(hwndMFGBtnStop,DISABLE);
+			ShowWindow(hwndMFGBtnStop,DISABLE);
+		}
 		break;
 		case SELECT_FILE_TRANSFER:		
 		break;
@@ -1829,11 +1839,10 @@ static void PopProgressBar( void )
       
 }
 
-static BOOL network_init(void)
+static BOOL linux_init(void)
 {
+	printf("linux_init..\n");
 	int retval = -1;	
-	unsigned char *buff = NULL;
-	
 	image_length = get_file_len(ini_file_info.name_of_image);
 	if(image_length <= 0)
 	{
@@ -1841,6 +1850,12 @@ static BOOL network_init(void)
 		return FALSE;
 	}
 	/*alloc memory for image_buffer,it will be released when tool terminated*/
+	
+	/*make WinUpgradeLibInit run in backgroud_func*/
+
+#ifdef U3_LIB
+	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length);
+#else
 	void *ptmp = realloc(image_buffer,image_length);
 	if(ptmp == NULL)
 	{
@@ -1858,70 +1873,122 @@ static BOOL network_init(void)
 		printf("retval = %d, image_length = %d\n",retval,image_length);
 		ERROR_MESSAGE("%s read error.",ini_file_info.name_of_image);
 		return FALSE;
-	}
-	printf("before init\n");
-	/*make WinUpgradeLibInit run in backgroud_func*/
-#ifdef DEVELOPMENT
-	switch(burn_mode)
-	{
-		case SELECT_FILE_TRANSFER:
-		case SELECT_LINUX_PROGRAMMING:
-		#ifdef U3_LIB
-		retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length);
-		#else		
-		retval = WinUpgradeLibInit(image_buffer,image_length,ini_file_info.ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
-		printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_length,ini_file_info.ip);
-		#endif
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		/*SPL Programing not support yet*/
-		break;
-		case SELECT_MFG_PROGRAMMING:
-		retval = burnMFGinit(ini_file_info.name_of_image);
-		break;
-	}
-#elif defined(MAINTAINMENT)
-#ifdef U3_LIB
-	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length);
-#else
+	}		
 	retval = WinUpgradeLibInit(image_buffer,image_length,ini_file_info.ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
 #endif
-#elif defined(PRODUCTION)
-	retval = burnMFGinit(ini_file_info.name_of_image);
-#endif		
+	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_length,ini_file_info.ip);
 	if(retval != 0)
 	{
 		/*just print the errcode string*/
-		ERROR_MESSAGE("%s",get_error_info(retval));
+		ERROR_MESSAGE("Init error:%s",get_error_info(retval));
 		return FALSE;
-	}	
-
+	}
 	return TRUE;
 }
-static inline BOOL check_ini(void)
+static BOOL spl_init(void)
 {
-	/*read the ini file and parse it into struct*/
-	if(get_file_len(ini_file) <= 0)
-	{
-		ERROR_MESSAGE("%s lost.",ini_file);
+	int retval = -1;
+	printf("spl_init..\n");
+	if(check_ini() == FALSE)
 		return FALSE;
-	}
-	if(parse_ini_file(ini_file) == FALSE)
+	image_length = get_file_len(ini_file_info.name_of_rescue_image);
+	if(image_length <= 0)
 	{
-		ERROR_MESSAGE("%s syntax error.",ini_file);
-		return FALSE;
-	}
-	printf("ini_file = %s\n",ini_file);
-	printf("ip = %s, image = %s\n",ini_file_info.ip,ini_file_info.name_of_image);
-	if(get_image_info(ini_file_info.name_of_image) == FALSE)
-	{
-		ERROR_MESSAGE("get image partition failed.check if image file exsit.");
+		ERROR_MESSAGE("%s not exsit.",ini_file_info.name_of_rescue_image);
 		return FALSE;
 	}
 	return TRUE;
 }
+static void spl_burn(void)
+{
+	int retval;
+	printf("spl_burn..\n");
+	transfer_start();
+	retval = burnSPL(ini_file_info.name_of_rescue_image,image_length);
+	if(retval != 0)
+	{		
+		goto EXIT;
+	}
+	retval = linux_init();
+	if(retval == FALSE)
+	{
+		goto EXIT;
+	}	
+#ifdef DEVELOPMENT
+	retval = burnpartition(partition_selected);
+#elif defined(PRODUCTION)
+	#warning "should i put all parition checked and use burnparition"
+	retval = burnImage();
+#endif
+	if(retval == 0)
+		RebootTarget();	
+EXIT:
+	if(retval != 0)
+		ERROR_MESSAGE("Error occurs,please try it again.");
+	transfer_complete();
+	g_retval = retval;
+	listening_on = IS_LISTENING_ON_NOTHING;
+	update_ui_resources(ENABLE);
+}
+static BOOL mfg_init(void)
+{
+	int retval = -1;
+	printf("mfg_init..\n");
+	if(check_ini() == FALSE)
+		return FALSE;
+	image_length = get_file_len(ini_file_info.name_of_image);
+	if(image_length <= 0)
+	{
+		ERROR_MESSAGE("%s not exsit.",ini_file_info.name_of_image);
+		return FALSE;
+	}
+	SetWindowText(hwndMFGStaticInfo,"Init MFG device..");
+	retval = burnMFGinit(ini_file_info.name_of_image);
+	if(retval != 0)
+		return FALSE;
+	return TRUE;
+}
+static void mfg_burn(void)
+{
+	int retval;
+	printf("mfg_burn..\n");
+	transfer_start();
+	retval = burnMFG();
+	if(retval != 0)
+	{		
+		goto EXIT;
+	}
+		
+	if(spl_init() == FALSE)
+	{
+		UI_DEBUG("spl_init failed");
+		goto EXIT;
+	}
+	retval = burnSPL(ini_file_info.name_of_rescue_image,image_length);
+	if(retval != 0)
+	{
+		UI_DEBUG("burnSPL failed,errcode = %s",retval);
+		goto EXIT;
+	}
+	retval = linux_init();
+	if(retval == FALSE)
+	{
+		goto EXIT;
+	}
+	retval = burnImage();
+	if(retval == 0)
+		RebootTarget();	
+EXIT:
+	if(retval != 0)
+		ERROR_MESSAGE("Error occurs,please try it again.");
+	transfer_complete();
+	g_retval = retval;
+	listening_on = IS_LISTENING_ON_NOTHING;
+	update_ui_resources(ENABLE);
+}
+
 /*********************Nand Programing Button Process***********************/
-static void OnBtnCheckImgClick(void)
+static int OnBtnCheckImgClick(void)
 {
 	/*only invoke by developer tools for linux*/
 	EnableWindow(hwndMain,FALSE);	
@@ -1933,9 +2000,10 @@ static void OnBtnCheckImgClick(void)
 		EnableWindow(hwndLinBtnDown,TRUE);
 	}		
 	EnableWindow(hwndMain,TRUE);
+	return 0;
 }
 
-static void OnBtnDownClick(void)
+static int linux_download(void)
 {
 	/*begin to download partition.
 	if it's for consumer,then it's according the ini file,
@@ -1943,56 +2011,44 @@ static void OnBtnDownClick(void)
 	if it's for factory,then it's MFG burning,and if Batch box is checked,
 	then Down button will hiden,and Stop button show
 	*/
-	int retval = -1;
-	int partition_selected = 0;
+	int retval = -1;	
 	HWND hwndInfo = NULL;
-	int i = 0;
-	
 #ifdef DEVELOPMENT
 	switch(burn_mode)
 	{
-		case SELECT_LINUX_PROGRAMMING:
-		hwndInfo = hwndLinStaticInfo;
-		for(i = 0; i < total_partition;++i)
-		{
-			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
-		}
-		if(partition_selected == 0)
-		{
-			ERROR_MESSAGE("No partition select.");
-			return ;
-		}
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		hwndInfo = hwndSPLStaticInfo;		
-		break;
 		case SELECT_MFG_PROGRAMMING:
 		hwndInfo = hwndMFGStaticInfo;
 		break;
-	}
-#elif defined(MAINTAINMENT)
-	hwndInfo = hwndLinStaticInfo;
+		case SELECT_SPL_PROGRAMMING:
+		hwndInfo = hwndSPLStaticInfo;
+		break;
+		case SELECT_LINUX_PROGRAMMING:
+		hwndInfo = hwndLinStaticInfo;
+		break;
+	}	
 #elif defined(PRODUCTION)
 	hwndInfo = hwndMFGStaticInfo;
+#elif defined(MAINTAINMENT)
+	hwndInfo = hwndLinStaticInfo;
 #endif
-	update_ui_resources(FALSE);
-	
-#ifdef DEVELOPMENT
-	if(burn_mode != SELECT_LINUX_PROGRAMMING && check_ini() == FALSE)
-	{
-		update_ui_resources(TRUE);
-		return ;
-	}
-#else
+	update_ui_resources(FALSE);	
+
 	if(check_ini() == FALSE)
 	{
 		update_ui_resources(TRUE);
-		return ;
+		return 0;
 	}
-#endif
-			
+
+		/* if(spl_init() == FALSE)
+		{
+			update_ui_resources(ENABLE);
+			return FALSE;
+		}		
+		listening_on = IS_LISTENING_ON_SPL;
+		SetWindowText(hwndSPLStaticInfo,"Waiting for SPL device.."); */
+/******************linux download*********************/
 	SetWindowText(hwndInfo,"Waiting for target reboot into upgrade mode..");
-	if(FALSE == network_init())
+	if(FALSE == linux_init())
 	{
 		SetWindowText(hwndInfo,"Error occurs,please try it again.");
 		update_ui_resources(TRUE);
@@ -2001,12 +2057,9 @@ static void OnBtnDownClick(void)
 	SetWindowText(hwndInfo,"Init success.");
 	transfer_start();/*start a transfer thread*/	
 	
-	switch(burn_mode)
-	{
-		case SELECT_LINUX_PROGRAMMING:
 #ifdef DEVELOPMENT
-		printf("partition_selected = 0x%04x\n",partition_selected);
-		retval = burnpartition(partition_selected);
+	printf("partition_selected = 0x%04x\n",partition_selected);
+	retval = burnpartition(partition_selected);
 #elif defined(MAINTAINMENT)
 	#warning "need finish"
 	#if 0
@@ -2016,14 +2069,6 @@ static void OnBtnDownClick(void)
 	#endif
 		retval = burnImage();
 #endif
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		retval = burnSPL(ini_file_info.name_of_image,image_length);
-		break;
-		case SELECT_MFG_PROGRAMMING:
-		retval = burnMFG();
-		break;
-	}
 	
 	transfer_complete();	
 	if(retval != 0)
@@ -2048,20 +2093,21 @@ static void OnBtnDownClick(void)
 	/*successfully downloaded,reset some environment*/	
 	reset_ui_resources();
 }
-static void OnBtnStopClick(void)
+static int OnBtnStopClick(void)
 {
+	g_on_batch = FALSE;
+	return 0;
 }
-static void OnBtnRefreshClick(void)
+static int OnBtnRefreshClick(void)
 {
+	return 0;
 }
-static void OnBtnEnableTelnetClick(void)
+static int OnBtnEnableTelnetClick(void)
 {
-	int retval = EnableTelnet();
-	if(retval != 0)
-		ERROR_MESSAGE("Enable telnet failed!");
+	return EnableTelnet();	
 }
 
-static void OnBtnFileDownload(void)
+static int OnBtnFileDownload(void)
 {
 	char file_for_pc[MAX_PATH];
 	char file_for_target[MAX_PATH];
@@ -2074,7 +2120,7 @@ static void OnBtnFileDownload(void)
 	{
 		SetWindowText(hwndFdNotify,"Dest Path can't be empty.");
 		ERROR_MESSAGE("Dest Path can't be empty.");
-		return ;
+		return 0 ;
 	}
 	GetWindowText(hwndFdStaticSrcFile,file_for_pc,MAX_PATH);
 	get_abs_file_name(file_for_target,file_for_pc);
@@ -2083,11 +2129,11 @@ static void OnBtnFileDownload(void)
 	/*Disable Main Window and prepare to download*/
 	EnableWindow(hwndTab,FALSE);
 	SetWindowText(hwndFdNotify,"Init network..");
-	if(network_init() == FALSE)
+	if(linux_init() == FALSE)
 	{
 		EnableWindow(hwndTab,TRUE);
 		SetWindowText(hwndFdNotify,"Init network error.");
-		return ;
+		return 0;
 	}
 	SetWindowText(hwndFdNotify,"Init network success.");
 	
@@ -2151,10 +2197,10 @@ open_error:
 malloc_error:
 #endif
 	EnableWindow(hwndTab,TRUE);
-	
+	return 0;
 }
 
-static void OnBtnFileUpload(void)
+static int OnBtnFileUpload(void)
 {
 	char file_for_pc[MAX_PATH];
 	char file_for_target[MAX_PATH];
@@ -2168,7 +2214,7 @@ static void OnBtnFileUpload(void)
 	{
 		SetWindowText(hwndFuNotify,"Src File can't be empty.");
 		ERROR_MESSAGE("Src File can't be empty.");
-		return ;
+		return 0;
 	}
 	printf("file_for_target = %s\n",file_for_target);
 	printf("file_for_pc = %s\n",file_for_pc);
@@ -2178,11 +2224,11 @@ static void OnBtnFileUpload(void)
 	
 	EnableWindow(hwndTab,FALSE);
 	SetWindowText(hwndFuNotify,"Init network..");
-	if(network_init() == FALSE)
+	if(linux_init() == FALSE)
 	{
 		EnableWindow(hwndTab,TRUE);
 		SetWindowText(hwndFuNotify,"Init network error.");
-		return ;
+		return 0;
 	}
 	SetWindowText(hwndFuNotify,"Upload...");
 #ifdef U3_LIB
@@ -2244,7 +2290,7 @@ open_error:
 malloc_error:
 #endif
 	EnableWindow(hwndTab,TRUE);
-	
+	return 0;
 }
 /*********************File Transfer Button Process***********************/
 
@@ -2299,8 +2345,20 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	
 	if(hwnd == hwndLinBtnCheckImg)	
 		g_background_func = OnBtnCheckImgClick;	
-	else if(hwnd == hwndLinBtnDown)
-		g_background_func = OnBtnDownClick;	
+	else if(hwnd == hwndLinBtnDown){
+		int i;
+		partition_selected = 0;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}
+		g_background_func = linux_download;
+	}
 	else if(hwnd == hwndBtnEnableTelnet)
 		g_background_func = OnBtnEnableTelnetClick;
 	else if(hwnd == hwndLinBtnRefresh)
@@ -2315,20 +2373,55 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 	HWND hwnd = (HWND)lParam;
 		
 	if(hwnd == hwndSPLBtnDown)
-		g_background_func = OnBtnDownClick;	
-	else 
-		return FALSE;
-	WAKE_THREAD_UP();
+	{
+		int i;
+		partition_selected = 0;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}
+		#warning "need fix and test"
+		listening_on = IS_LISTENING_ON_SPL;
+		SetWindowText(hwndSPLStaticInfo,"Waiting for SPL device..");		
+	}
+	
 	return TRUE;
 }
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 {
-	HWND hwnd = (HWND)lParam;	
+	HWND hwnd = (HWND)lParam;
+		
 	if(hwnd == hwndMFGBtnDown)
-		g_background_func = OnBtnDownClick;	
-	else 
-		return FALSE;
-	WAKE_THREAD_UP();
+	{
+#ifdef DEVELOPMENT
+		int i;
+		partition_selected = 0;
+		for(i = 0; i < total_partition;++i)
+		{
+			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
+		}
+		if(partition_selected == 0)
+		{
+			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}
+#endif
+		if(CHECKBOX_IS_CLICK(hwndCheckBoxBatch))
+			g_on_batch = TRUE;
+		update_ui_resources(FALSE);
+		if(mfg_init() == FALSE)
+		{
+			update_ui_resources(TRUE);
+			return FALSE;
+		}		
+		listening_on = IS_LISTENING_ON_MFG;
+		SetWindowText(hwndMFGStaticInfo,"Waiting for MFG device..");		
+	}	
 	return TRUE;
 }
 /*
@@ -2402,7 +2495,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 							ShowWindow(hwndSPLPage,TRUE);
 							ShowWindow(hwndLinPage,FALSE);
 							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_user_file.ini";
+							ini_file = "for_mfg_file.ini";
 							break;
 							case SELECT_LINUX_PROGRAMMING:
 							ShowWindow(hwndMFGPage,FALSE);
@@ -2433,20 +2526,23 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			((PDEV_BROADCAST_HDR)lParam)->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
 			{
 				GUID insert_dev = ((PDEV_BROADCAST_DEVICEINTERFACE)lParam)->dbcc_classguid;
-				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)))
+				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
+				listening_on == IS_LISTENING_ON_SPL)
 				{
 					//spl device insert
-					ERROR_MESSAGE("spl device insert");
+					g_background_func = spl_burn;
+					WAKE_THREAD_UP();
 				}
-				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)))
+				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)) &&
+				listening_on == IS_LISTENING_ON_MFG)
 				{
 					//mfg device insert
-					ERROR_MESSAGE("mfg device insert");
+					g_background_func = mfg_burn;
+					WAKE_THREAD_UP();
 				}
 				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
 				{
-					//lan device insert
-					ERROR_MESSAGE("lan device insert");
+					//lan device insert					
 				}
 			}				
 		}
@@ -2466,6 +2562,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		/*just print the error information for errcode*/
 		case WM_ERROR:
 		ERROR_MESSAGE("%s",get_error_info(wParam));
+		break;
+		case WM_STAGE_COMPLETE:
 		break;
 		case WM_INVOKE_CALLBACK:
 		if (g_complete_func)
@@ -2763,8 +2861,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	
 	unregister_notifyer();
 	free(image_buffer);
-    CloseHandle(g_event);
-    CloseHandle(g_event_wait);
+    CloseHandle(g_event);   
 
     /* Receive the WM_QUIT message, release mutex and return the exit code to the system */
     CloseHandle(hMutex);

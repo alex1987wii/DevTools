@@ -149,7 +149,6 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define WIDTH_EDIT1             135
 
 
-
 #define WIDTH_BUTTON_NANDFLASH_PROGRAM 110
 
 
@@ -294,6 +293,7 @@ typedef struct _ini_file_info
 static ini_file_info_t ini_file_info;
 static void *image_buffer = NULL;
 static int image_length = 0;
+static HWND    hwndInfo;
 /**********************Linux Handler Declaration*************************/
 static HWND    hwndLinPage;
 static HWND    hwndLinGroupReadme;
@@ -410,7 +410,6 @@ void ExitDebugConsole( void )
 }
 
 #endif
-
 
 static inline void CreatePartitionList(void)
 {
@@ -710,8 +709,7 @@ static inline BOOL check_ini(void)
 	return get_image_info(ini_file_info.name_of_image);
 }
 static void ChangeProgressBar(int percent)
-{
-    
+{    
     char temp[16];   
     sprintf(temp, " %02d%% ", percent);
     SetWindowText(hwndPopPercent, TEXT(temp));
@@ -885,34 +883,8 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	unsigned short status = 0;
 	unsigned char index = 0;	
 	TCHAR text[256];
-	HWND hwndInfo = NULL;
+	
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
-#ifdef DEVELOPMENT
-	switch(burn_mode)
-		{
-			case SELECT_FILE_TRANSFER:
-			/*file transfer don't get progress yet*/
-			break;
-			case SELECT_LINUX_PROGRAMMING:
-			hwndInfo = hwndLinStaticInfo;
-			break;
-			case SELECT_SPL_PROGRAMMING:
-			hwndInfo = hwndSPLStaticInfo;
-			break;
-			case SELECT_MFG_PROGRAMMING:
-			hwndInfo = hwndMFGStaticInfo;
-			break;
-#ifdef ENABLE_DEBUG
-			default:
-			ERROR_MESSAGE("Unhandled burn_mode");
-			break;
-#endif
-		}
-#elif defined(PRODUCTION)
-		hwndInfo = hwndMFGStaticInfo;
-#elif defined(MAINTAINMENT)
-		hwndInfo = hwndLinStaticInfo;
-#endif
 
 	SetWindowText(hwndInfo,"Preparing..");
 	while(1)
@@ -932,6 +904,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 #endif
 		if(retval != 0)
 		{
+			printf("progress_reply_status_get return errcode:%s\n",get_error_info(retval));
 			break;
 		}
 		if(hwndPop == NULL && status != 0)		
@@ -1973,28 +1946,9 @@ static int linux_download(void)
 	if it's for factory,then it's MFG burning,and if Batch box is checked,
 	then Down button will hiden,and Stop button show
 	*/
-	int retval = -1;	
-	HWND hwndInfo = NULL;
-#ifdef DEVELOPMENT
-	switch(burn_mode)
-	{
-		case SELECT_MFG_PROGRAMMING:
-		hwndInfo = hwndMFGStaticInfo;
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		hwndInfo = hwndSPLStaticInfo;
-		break;
-		case SELECT_LINUX_PROGRAMMING:
-		hwndInfo = hwndLinStaticInfo;
-		update_ui_resources(FALSE);	
-		break;
-	}	
-#elif defined(PRODUCTION)
-	hwndInfo = hwndMFGStaticInfo;
-#elif defined(MAINTAINMENT)
-	hwndInfo = hwndLinStaticInfo;
-	update_ui_resources(FALSE);	
-#endif
+	int retval = -1;
+	if(burn_mode == SELECT_LINUX_PROGRAMMING)
+		update_ui_resources(FALSE);
 
 	SetWindowText(hwndInfo,"Waiting for target reboot into upgrade mode..");
 	if(FALSE == linux_init())
@@ -2073,28 +2027,11 @@ static BOOL spl_init(void)
 }
 static int spl_download(void)
 {
-	int retval;
-	HWND hwndInfo = NULL;
+	int retval;	
 	printf("spl_download..\n");
-#ifdef DEVELOPMENT
-	switch(burn_mode)
-	{
-		case SELECT_MFG_PROGRAMMING:
-		hwndInfo = hwndMFGStaticInfo;
-		break;
-		case SELECT_SPL_PROGRAMMING:
-		hwndInfo = hwndSPLStaticInfo;
-		update_ui_resources(FALSE);	
-		break;
-		case SELECT_LINUX_PROGRAMMING:
-		hwndInfo = hwndLinStaticInfo;		
-		break;
-	}	
-#elif defined(PRODUCTION)
-	hwndInfo = hwndMFGStaticInfo;
-#elif defined(MAINTAINMENT)
-	hwndInfo = hwndLinStaticInfo;	
-#endif
+	if(SELECT_SPL_PROGRAMMING == burn_mode)
+		update_ui_resources(FALSE);
+	SetWindowText(hwndInfo,"SPL init..");
 	if(FALSE == spl_init())
 	{
 		SetWindowText(hwndInfo,"SPL init error.");
@@ -2171,42 +2108,43 @@ static BOOL mfg_init(void)
 	return TRUE;
 }
 static int mfg_download(void)
-{
+{	
 	int retval = -1;
 	printf("mfg_download..\n");
-	transfer_start();
-	retval = burnMFG();
-	if(retval != 0)
-	{		
-		goto EXIT;
-	}
-		
-	if(spl_init() == FALSE)
+	if(SELECT_MFG_PROGRAMMING == burn_mode)
+		update_ui_resources(FALSE);
+	SetWindowText(hwndInfo,"MFG init..");
+	if(FALSE == mfg_init())
 	{
-		UI_DEBUG("spl_init failed");
-		goto EXIT;
+		SetWindowText(hwndInfo,"MFG init error.");
+		//ERROR_MESSAGE("Error occurs,please try it again.");
+		goto mfg_download_error;
 	}
-	retval = burnSPL(ini_file_info.name_of_rescue_image,image_length);
+	SetWindowText(hwndInfo,"Waiting for MFG download..");
+	
+	retval = burnMFG();	
+	
 	if(retval != 0)
 	{
-		UI_DEBUG("burnSPL failed,errcode = %s",retval);
-		goto EXIT;
+		SetWindowText(hwndInfo,"SPL download error.");
+		ERROR_MESSAGE("MFG download error,please try it again.");
+		goto mfg_download_error;
 	}
-	retval = linux_init();
-	if(retval == FALSE)
-	{
-		goto EXIT;
-	}
-	retval = burnImage();
-	if(retval == 0)
-		RebootTarget();	
-EXIT:
+	SetWindowText(hwndInfo,"Waiting for SPL download..");	
+	retval = spl_download();
+	
 	if(retval != 0)
-		ERROR_MESSAGE("Error occurs,please try it again.");
-	transfer_complete();
-	g_retval = retval;
-	listening_on = IS_LISTENING_ON_NOTHING;
-	update_ui_resources(ENABLE);
+	{
+		goto mfg_download_error;
+	}
+	/*mfg dowload complete*/
+	#warning "need finish"
+	
+	return 0;
+mfg_download_error:	
+	if(burn_mode == SELECT_MFG_PROGRAMMING)
+		update_ui_resources(TRUE);
+	return retval;
 }
 
 /*********************Nand Programing Button Process***********************/
@@ -2235,7 +2173,6 @@ static int OnBtnCheckImgClick(void)
 	EnableWindow(hwndMain,TRUE);
 	return 0;
 }
-
 
 
 static int OnBtnRefreshClick(void)
@@ -2536,8 +2473,7 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 	{
 		g_background_func = OnBtnCheckImgClick;	
 		WAKE_THREAD_UP();
-	}
-	
+	}	
 	return TRUE;
 }
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
@@ -2652,7 +2588,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 							ShowWindow(hwndSPLPage,FALSE);
 							ShowWindow(hwndLinPage,FALSE);
 							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_mfg_file.ini";							
+							ini_file = "for_mfg_file.ini";
+							hwndInfo = hwndMFGStaticInfo;
 							break;
 							case SELECT_SPL_PROGRAMMING:
 							ShowWindow(hwndMFGPage,FALSE);
@@ -2660,12 +2597,14 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 							ShowWindow(hwndLinPage,FALSE);
 							ShowWindow(hwndFileTransferPage,FALSE);
 							ini_file = "for_mfg_file.ini";
+							hwndInfo = hwndSPLStaticInfo;
 							break;
 							case SELECT_LINUX_PROGRAMMING:
 							ShowWindow(hwndMFGPage,FALSE);
 							ShowWindow(hwndSPLPage,FALSE);
 							ShowWindow(hwndLinPage,TRUE);
 							ShowWindow(hwndFileTransferPage,FALSE);
+							hwndInfo = hwndLinStaticInfo;
 							ini_file = "for_user_file.ini";
 							break;
 							case SELECT_FILE_TRANSFER:
@@ -2674,6 +2613,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 							ShowWindow(hwndLinPage,FALSE);
 							ShowWindow(hwndFileTransferPage,TRUE);
 							ini_file = "for_user_file.ini";
+							#warning "this should never used"
+							hwndInfo = hwndFdNotify;
 							break;
 						}
 						
@@ -2989,10 +2930,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	InitSPLWindow();
 	InitMFGWindow();
 	InitFileTransferWindow();
+	hwndInfo = hwndLinStaticInfo;
 #elif defined(MAINTAINMENT)
 	InitLinuxWindow();
+	hwndInfo = hwndLinStaticInfo;
 #elif defined(PRODUCTION)
 	InitMFGWindow();
+	hwndInfo = hwndMFGStaticInfo;
 #endif	
     register_notifyer();
 
@@ -3027,3 +2971,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 
     return msg.wParam;
 }
+#warning "work tips"
+/*
+*1.检查SPL,MFG烧录过程中进度显示是一次完成好，还是分次完成好，并修正代码
+*2.完成MFG烧录完成后的收尾工作，是在mfg_download里完成，还是processMFGCommand里完成
+*3.update_ui_resources和reset_ui_resources是否应该进一步优化修正
+*4.hwndInfo已经更改为全局变量，信息提示是否应该修正为哪里处理就哪里提示
+*5.工程整合，a.了解各工程的正确字符串，uni_image_header里的工程文件如何与本工程完成匹配
+*			  b.本工程源码应该如何管理
+*			  c.各项目的头文件和库的加入以及Makefile的修正
+*/

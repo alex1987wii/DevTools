@@ -46,7 +46,7 @@ DEPS = devToolsRes.h
 all: clean ./lib/libiniparser.a $(TARGETS)
 
 ./lib/libiniparser.a:./src/dictionary.o ./src/iniparser.o
-	$(AR) rcs -o $@ $^
+	$(AR) rcs $@ $^
 ./src/iniparser.o:./src/iniparser.c
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
 ./src/dictionary.o:./src/dictionary.c

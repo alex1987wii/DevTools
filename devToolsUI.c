@@ -2611,46 +2611,45 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
             {
 				/*only development have mutiple tab controll*/
 #ifdef DEVELOPMENT
-                case TCN_SELCHANGE:
-                    {						
-                        burn_mode = TabCtrl_GetCurSel(hwndTab);
-                        switch(burn_mode)
-						{
-							case SELECT_MFG_PROGRAMMING:
-							ShowWindow(hwndMFGPage,TRUE);
-							ShowWindow(hwndSPLPage,FALSE);
-							ShowWindow(hwndLinPage,FALSE);
-							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_mfg_file.ini";
-							hwndInfo = hwndMFGStaticInfo;
-							break;
-							case SELECT_SPL_PROGRAMMING:
-							ShowWindow(hwndMFGPage,FALSE);
-							ShowWindow(hwndSPLPage,TRUE);
-							ShowWindow(hwndLinPage,FALSE);
-							ShowWindow(hwndFileTransferPage,FALSE);
-							ini_file = "for_mfg_file.ini";
-							hwndInfo = hwndSPLStaticInfo;
-							break;
-							case SELECT_LINUX_PROGRAMMING:
-							ShowWindow(hwndMFGPage,FALSE);
-							ShowWindow(hwndSPLPage,FALSE);
-							ShowWindow(hwndLinPage,TRUE);
-							ShowWindow(hwndFileTransferPage,FALSE);
-							hwndInfo = hwndLinStaticInfo;
-							ini_file = "for_user_file.ini";
-							break;
-							case SELECT_FILE_TRANSFER:
-							ShowWindow(hwndMFGPage,FALSE);
-							ShowWindow(hwndSPLPage,FALSE);
-							ShowWindow(hwndLinPage,FALSE);
-							ShowWindow(hwndFileTransferPage,TRUE);
-							ini_file = "for_user_file.ini";							
-							hwndInfo = hwndFdNotify;
-							break;
-						}
+                case TCN_SELCHANGE:                    
+					burn_mode = TabCtrl_GetCurSel(hwndTab);
+					switch(burn_mode)
+					{
+						case SELECT_MFG_PROGRAMMING:
+						ShowWindow(hwndMFGPage,TRUE);
+						ShowWindow(hwndSPLPage,FALSE);
+						ShowWindow(hwndLinPage,FALSE);
+						ShowWindow(hwndFileTransferPage,FALSE);
+						ini_file = "for_mfg_file.ini";
+						hwndInfo = hwndMFGStaticInfo;
+						break;
+						case SELECT_SPL_PROGRAMMING:
+						ShowWindow(hwndMFGPage,FALSE);
+						ShowWindow(hwndSPLPage,TRUE);
+						ShowWindow(hwndLinPage,FALSE);
+						ShowWindow(hwndFileTransferPage,FALSE);
+						ini_file = "for_mfg_file.ini";
+						hwndInfo = hwndSPLStaticInfo;
+						break;
+						case SELECT_LINUX_PROGRAMMING:
+						ShowWindow(hwndMFGPage,FALSE);
+						ShowWindow(hwndSPLPage,FALSE);
+						ShowWindow(hwndLinPage,TRUE);
+						ShowWindow(hwndFileTransferPage,FALSE);
+						hwndInfo = hwndLinStaticInfo;
+						ini_file = "for_user_file.ini";
+						break;
+						case SELECT_FILE_TRANSFER:
+						ShowWindow(hwndMFGPage,FALSE);
+						ShowWindow(hwndSPLPage,FALSE);
+						ShowWindow(hwndLinPage,FALSE);
+						ShowWindow(hwndFileTransferPage,TRUE);
+						ini_file = "for_user_file.ini";							
+						hwndInfo = hwndFdNotify;
+						break;
+					}
 						
-                    }
+                    
                     return TRUE;
 #endif
                 default:

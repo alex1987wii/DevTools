@@ -467,6 +467,47 @@ static inline void EnablePartitionList(BOOL enable)
 	}
 }
 
+void update_ui_resources(int enable)
+{	
+	/*BtnDown enable if error occurs,but disable by reset_ui_resources when successfully complete*/
+	switch(burn_mode)
+	{
+		case SELECT_LINUX_PROGRAMMING:
+		EnableWindow(hwndLinPage,enable);
+		EnableWindow(hwndLinBtnCheckImg,enable);
+		EnableWindow(hwndLinBtnDown,enable);
+		EnableWindow(hwndLinBtnRefresh,enable);
+		EnableWindow(hwndCheckBoxDelete,enable);
+		EnableWindow(hwndBtnEnableTelnet,enable);
+		EnableWindow(hwndCheckBoxSkipBatCheck,enable);
+		
+#ifdef DEVELOPMENT
+		EnablePartitionList(enable);
+#endif
+		break;
+		case SELECT_SPL_PROGRAMMING:		
+		EnableWindow(hwndSPLPage,enable);
+		EnableWindow(hwndSPLBtnCheckImg,enable);		
+		EnableWindow(hwndSPLBtnDown,enable);
+		
+#ifdef DEVELOPMENT
+		EnablePartitionList(enable);
+#endif		
+		break;
+		case SELECT_MFG_PROGRAMMING:
+		EnableWindow(hwndMFGPage,enable);
+		EnableWindow(hwndMFGBtnCheckImg,enable);		
+		EnableWindow(hwndMFGBtnDown,enable);
+		EnableWindow(hwndCheckBoxBatch,enable);
+#ifdef DEVELOPMENT
+		EnablePartitionList(enable);
+#endif			
+		break;
+		case SELECT_FILE_TRANSFER:		
+		break;
+	}
+	EnableWindow(hwndTab,enable);
+}
 /*reset ui page into initial status when image download complete*/
 
 static inline void reset_ui_resources(int page)
@@ -1795,52 +1836,6 @@ static BOOL InitMainWindow(void)
     return TRUE;
 }
 
-
-
-void update_ui_resources(int enable)
-{
-	
-	/*BtnDown enable if error occurs,but disable by reset_ui_resources when successfully complete*/
-	switch(burn_mode)
-	{
-		case SELECT_LINUX_PROGRAMMING:
-		EnableWindow(hwndLinPage,enable);
-		EnableWindow(hwndLinBtnCheckImg,enable);
-		EnableWindow(hwndLinBtnDown,enable);
-		EnableWindow(hwndLinBtnRefresh,enable);
-		EnableWindow(hwndCheckBoxDelete,enable);
-		EnableWindow(hwndBtnEnableTelnet,enable);
-		EnableWindow(hwndCheckBoxSkipBatCheck,enable);
-		
-#ifdef DEVELOPMENT
-		EnablePartitionList(enable);
-#endif
-		break;
-		case SELECT_SPL_PROGRAMMING:		
-		EnableWindow(hwndSPLPage,enable);
-		EnableWindow(hwndSPLBtnCheckImg,enable);		
-		EnableWindow(hwndSPLBtnDown,enable);
-		
-#ifdef DEVELOPMENT
-		EnablePartitionList(enable);
-#endif		
-		break;
-		case SELECT_MFG_PROGRAMMING:
-		EnableWindow(hwndMFGPage,enable);
-		EnableWindow(hwndMFGBtnCheckImg,enable);		
-		EnableWindow(hwndMFGBtnDown,enable);
-		EnableWindow(hwndCheckBoxBatch,enable);
-#ifdef DEVELOPMENT
-		EnablePartitionList(enable);
-#endif			
-		break;
-		case SELECT_FILE_TRANSFER:		
-		break;
-	}
-	EnableWindow(hwndTab,enable);
-}
-
-
 static void PopProgressBar( void )
 {   
 
@@ -2609,9 +2604,14 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)
             {
-				/*only development have mutiple tab controll*/
+				/*only development tool have mutiple tab controll*/
 #ifdef DEVELOPMENT
-                case TCN_SELCHANGE:                    
+                case TCN_SELCHANGE:
+					if(listening_on != IS_LISTENING_ON_NOTHING)
+					{
+						SendMessage(hwndMFGBtnStop,BM_CLICK,0,0);
+						//SendMessage(hwndSPLBtnStop,BM_CLICK,0,0);
+					}
 					burn_mode = TabCtrl_GetCurSel(hwndTab);
 					switch(burn_mode)
 					{

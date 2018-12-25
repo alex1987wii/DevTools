@@ -178,7 +178,7 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #elif defined CONFIG_PROJECT_G4_BBA
 #define PROJECT			"G4_BBA"
 #elif defined CONFIG_PROJECT_BR01_2ND
-#define PROJECT			"BR01_2nd"
+#define PROJECT			"BR01_2ND"
 #elif defined CONFIG_PROJECT_M2
 #define PROJECT			"M2"
 #elif defined CONFIG_PROJECT_AD6900_BBA
@@ -189,6 +189,8 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define PROJECT			"G4_BBA_V2"
 #elif defined CONFIG_PROJECT_U4_BBA
 #define PROJECT			"U4_BBA"
+#elif defined CONFIG_PROJECT_REPEATER_BBA
+#define PROJECT			"REPEATER_BBA"
 #else
 	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
 #endif
@@ -490,6 +492,11 @@ void update_ui_resources(int enable)
 		
 #ifdef DEVELOPMENT
 		EnablePartitionList(enable);
+		if(enable == FALSE)
+		{
+			EnableWindow(hwndSPLBtnDown,FALSE);
+			EnableWindow(hwndMFGBtnDown,FALSE);
+		}
 #endif
 		break;
 		case SELECT_SPL_PROGRAMMING:		
@@ -499,6 +506,11 @@ void update_ui_resources(int enable)
 		
 #ifdef DEVELOPMENT
 		EnablePartitionList(enable);
+		if(enable == FALSE)
+		{
+			EnableWindow(hwndLinBtnDown,FALSE);
+			EnableWindow(hwndMFGBtnDown,FALSE);
+		}
 #endif		
 		break;
 		case SELECT_MFG_PROGRAMMING:
@@ -508,6 +520,11 @@ void update_ui_resources(int enable)
 		EnableWindow(hwndCheckBoxBatch,enable);
 #ifdef DEVELOPMENT
 		EnablePartitionList(enable);
+		if(enable == FALSE)
+		{
+			EnableWindow(hwndSPLBtnDown,FALSE);
+			EnableWindow(hwndLinBtnDown,FALSE);
+		}
 #endif			
 		break;
 		case SELECT_FILE_TRANSFER:		
@@ -737,7 +754,7 @@ static inline BOOL check_ini(void)
 	}
 	if(parse_ini_file(ini_file) == FALSE)
 	{
-		ERROR_MESSAGE("%s syntax error.",ini_file);
+		ERROR_MESSAGE("%s invalid configuration.",ini_file);
 		return FALSE;
 	}
 	printf("ini_file = %s\n",ini_file);
@@ -906,13 +923,7 @@ static void unregister_notifyer(void)
 
 #define WAKE_THREAD_UP() do {SetEvent(g_event); } while (0)
 
-char* current_step[] = {
-    "Download successfully !",
-    "Waiting for mfg mode device...",
-    "Waiting for spl mode device...",
-    "Waiting for upgrade mode device...",
-    "Error code: ",
-};
+
 
 static DWORD WINAPI TransferThread(LPVOID lpParam)
 {
@@ -949,10 +960,8 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 			SendMessage(hwndMain,WM_CREATE_PROGRESS_BAR,0,0); */
 		switch(status)
 		{
-			case PROGRESS_STATUS_FINISHED:			
-			snprintf(text,256,"%s %s",stage[status],index < total_partition ? partition_name[index] : "");
-			SetWindowText(hwndInfo,text);
-			
+			case PROGRESS_STATUS_FINISHED:	
+						
 			case PROGRESS_STATUS_PREPARING:
 			if(percent>0 && percent < 100)
 			{
@@ -1214,7 +1223,7 @@ static void InitLinuxWindow(void)
     relative_x += H_GAPS * 2;
     relative_y += V_GAPS + HEIGHT_TAG;
 #ifdef MAINTAINMENT
-	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade/Download Button and wait until it finished.\n3. If any error occurs during updating/downloading,please reconnect device and reopen this tool to try it again.");
+	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade/Download Button and wait until it finished.\n3. If any error occurs during updating/downloading,please reconnect device and reopen this tool to try it again.\n4.Don't pull off the USB cable during process.");
 #else
 	readme = project_target;
 #endif
@@ -2513,7 +2522,8 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		}
 #endif
 		g_background_func = linux_download;
-		update_ui_resources(FALSE);		
+		update_ui_resources(FALSE);
+		
 	}
 	else if(hwnd == hwndBtnEnableTelnet)
 		g_background_func = OnBtnEnableTelnetClick;
@@ -2698,8 +2708,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ini_file = "for_user_file.ini";							
 						hwndInfo = hwndFdNotify;
 						break;
-					}
-						
+					}						
                     
                     return TRUE;
 #endif

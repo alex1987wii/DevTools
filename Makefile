@@ -22,8 +22,22 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=g4
-#valid_proj=u3 u4 g4 m2 br01
+PROJECT=G4_BBA
+valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA G4_BBA_V2 REPEATER_BBA M2 BR01
+ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
+    $(warning we only support: )
+    $(foreach pro,$(valid_proj),$(warning $(pro)))
+    $(warning)
+    $(error you specified $(PROJECT) which is not a valid project)
+endif
+ifeq ($(PROJECT),U3)
+    LIB=U3
+else ifeq($(PROJECT),U3_2ND)
+    LIB=U3
+else
+    LIB=Gx
+endif
+
 # compiler and bin utilities definitions
 CC=gcc
 AR=ar
@@ -31,8 +45,8 @@ RC=windres
 
 # compile flag and link flag definitions
 
-CFLAGS  = -g -DCONFIG_PROJECT_G4_BBA -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(PROJECT)/include -DSF_VERSION=\"$(WIN_UTIL_VERSION)\" 
-LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(PROJECT)/lib -lupgrade -L./lib -liniparser
+CFLAGS  = -DCONFIG_PROJECT_$(PROJECT) -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(LIB)/include -DSF_VERSION=\"$(WIN_UTIL_VERSION)\" 
+LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./lib -liniparser
 
 # build target and dependency definitions
 TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION)
@@ -71,13 +85,13 @@ resource_product.o: devTools.rc devToolsRes.h
 	$(RC) $< -DPRODUCTION $@
 
 # UI object
-devToolsUI_maintain.o: devToolsUI.c ./$(PROJECT)/include/devToolsUI_private.h
+devToolsUI_maintain.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
 	$(CC) -c -o $@ -DMAINTAINMENT $(CFLAGS) $<
 
-devToolsUI_dev.o: devToolsUI.c ./$(PROJECT)/include/devToolsUI_private.h
+devToolsUI_dev.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
 	$(CC) -c -o $@ -DDEVELOPMENT $(CFLAGS) $<
 
-devToolsUI_product.o: devToolsUI.c ./$(PROJECT)/include/devToolsUI_private.h
+devToolsUI_product.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
 	$(CC) -c -o $@ -DPRODUCTION $(CFLAGS) $<
 
 %.o: %.c $(DEPS)
@@ -87,4 +101,4 @@ install:
 	cp -rf $(TARGETS) $(WIN_UTIL_PATH)/
 
 clean:
-	rm -f *.o $(TARGETS) $(SYMBLE_LINKS)
+	rm -f *.o $(TARGETS)

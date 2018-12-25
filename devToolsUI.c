@@ -108,7 +108,7 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define MAX_STATUS					(6)
 	
 #if defined DEVELOPMENT
-#define DEV_TOOLS_NUMBER        4           /* Unication dev tools have three utilities */
+#define DEV_TOOLS_NUMBER        3           /* Unication dev tools have three utilities */
 #elif defined MAINTAINMENT
 #define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
 #elif defined PRODUCTION
@@ -181,7 +181,14 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define PROJECT			"BR01_2nd"
 #elif defined CONFIG_PROJECT_M2
 #define PROJECT			"M2"
-
+#elif defined CONFIG_PROJECT_AD6900_BBA
+#define PROJECT			"AD6900_BBA"
+#elif defined CONFIG_PROJECT_BR01
+#define PROJECT			"BR01"
+#elif defined CONFIG_PROJECT_G4_BBA_V2
+#define PROJECT			"G4_BBA_V2"
+#elif defined CONFIG_PROJECT_U4_BBA
+#define PROJECT			"U4_BBA"
 #else
 	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
 #endif
@@ -511,12 +518,15 @@ void update_ui_resources(int enable)
 /*reset ui page into initial status when image download complete*/
 
 static inline void reset_ui_resources(int page)
-{
-	listening_on = IS_LISTENING_ON_NOTHING;
+{	
 	switch(page)
 	{
-		case SELECT_LINUX_PROGRAMMING:		
-		//EnableWindow(hwndLinBtnDown,FALSE);
+		case SELECT_LINUX_PROGRAMMING:
+/* #ifdef DEVELOPMENT		
+		EnableWindow(hwndLinBtnDown,FALSE);
+#elif defined(MAINTAINMENT)
+		EnableWindow(hwndLinBtnDown,TRUE);
+#endif */
 		break;
 		case SELECT_SPL_PROGRAMMING:		
 		//EnableWindow(hwndSPLBtnDown,FALSE);
@@ -535,6 +545,7 @@ static inline void reset_ui_resources(int page)
 		}
 		else
 		{
+			ShowWindow(hwndMFGBtnDown,TRUE);
 			ShowWindow(hwndMFGBtnStop,FALSE);
 		}		
 		break;
@@ -938,7 +949,12 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 			snprintf(text,256,"%s %s",stage[status],index < total_partition ? partition_name[index] : "");
 			SetWindowText(hwndInfo,text);
 			
-			case PROGRESS_STATUS_PREPARING:			
+			case PROGRESS_STATUS_PREPARING:
+			if(percent>0 && percent < 100)
+			{
+				snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],index < total_partition ? partition_name[index] : "",percent);
+				SetWindowText(hwndInfo,text);
+			}
 			/* if(hwndPop)
 				ShowWindow(hwndPop,FALSE); */
 			break;
@@ -1970,6 +1986,7 @@ static int linux_download(void)
 	{
 		/*reboot target*/
 		SetWindowText(hwndInfo,"Rebooting target..");
+		
 		retval = RebootTarget();
 		if(retval != 0)
 		{
@@ -1979,7 +1996,7 @@ static int linux_download(void)
 		}
 		else
 		{
-			SetWindowText(hwndInfo,"Download Success!");
+			SetWindowText(hwndInfo,"Download Complete!");
 			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
 		}
 		update_ui_resources(TRUE);
@@ -1990,10 +2007,13 @@ static int linux_download(void)
 	return 0;
 linux_download_error:
 	if(burn_mode == SELECT_LINUX_PROGRAMMING)
+	{		
 		update_ui_resources(TRUE);
+	}
 	else
 		transfer_complete();
 	g_processing = FALSE;
+	
 	return retval;
 }
 
@@ -2041,7 +2061,7 @@ static int spl_download(void)
 	{
 		transfer_complete();
 		/*reboot target*/
-		SetWindowText(hwndInfo,"Rebooting target..");
+		SetWindowText(hwndInfo,"Rebooting target..");		
 		retval = RebootTarget();
 		if(retval != 0)
 		{
@@ -2051,7 +2071,7 @@ static int spl_download(void)
 		}
 		else
 		{
-			SetWindowText(hwndInfo,"Download Success!");
+			SetWindowText(hwndInfo,"Download Complete!");
 			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
 		}
 		listening_on = IS_LISTENING_ON_NOTHING;
@@ -2061,7 +2081,7 @@ static int spl_download(void)
 	return 0;
 spl_download_error:	
 	if(burn_mode == SELECT_SPL_PROGRAMMING)
-	{
+	{		
 		update_ui_resources(TRUE);
 	}
 	return retval;
@@ -2134,7 +2154,7 @@ static int mfg_download(void)
 	{
 		transfer_complete();
 		/*reboot target*/
-		SetWindowText(hwndInfo,"Rebooting target..");
+		SetWindowText(hwndInfo,"Rebooting target..");		
 		retval = RebootTarget();
 		if(retval != 0)
 		{
@@ -2144,7 +2164,7 @@ static int mfg_download(void)
 		}
 		else
 		{
-			SetWindowText(hwndInfo,"Download Success!");
+			SetWindowText(hwndInfo,"Download Complete!");
 			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
 		}		
 		update_ui_resources(TRUE);
@@ -2154,7 +2174,7 @@ static int mfg_download(void)
 mfg_download_error:	
 	if(burn_mode == SELECT_MFG_PROGRAMMING)
 	{
-		g_on_batch = FALSE;
+		g_on_batch = FALSE;		
 		update_ui_resources(TRUE);
 		reset_ui_resources(SELECT_MFG_PROGRAMMING);
 	}
@@ -2194,17 +2214,24 @@ static int OnBtnRefreshClick(void)
 }
 static int OnBtnEnableTelnetClick(void)
 {
+	/*save button LinBtnDown's status*/ 
+	WINDOWINFO info_for_btn_down;
+	info_for_btn_down.cbSize = sizeof(WINDOWINFO);
+	GetWindowInfo(hwndLinBtnDown,&info_for_btn_down);
 	update_ui_resources(FALSE);
 	SetWindowText(hwndInfo,"EnableTelnet..");
 	int retval = EnableTelnet();
 	if(retval != 0)
 	{
-		SetWindowText(hwndInfo,"EnableTelnet Success.");
+		SetWindowText(hwndInfo,"EnableTelnet Failed.");
 		ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
 	}
 	else
-		SetWindowText(hwndInfo,"EnableTelnet Failed.");
+		SetWindowText(hwndInfo,"EnableTelnet Success.");
 	update_ui_resources(TRUE);
+	/*restore LinBtnDown's status*/
+	EnableWindow(hwndLinBtnDown,!(info_for_btn_down.dwStyle & WS_DISABLED));
+	
 	return 0;
 }
 
@@ -2664,9 +2691,10 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			{
 				GUID insert_dev = ((PDEV_BROADCAST_DEVICEINTERFACE)lParam)->dbcc_classguid;
 				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
-				listening_on == IS_LISTENING_ON_SPL)
+				listening_on == IS_LISTENING_ON_SPL )
 				{
-					//spl device insert
+					//spl device insert					
+					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = spl_download;
 					WAKE_THREAD_UP();
 					g_processing = TRUE;
@@ -2675,6 +2703,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 				listening_on == IS_LISTENING_ON_MFG)
 				{
 					//mfg device insert
+					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = mfg_download;
 					WAKE_THREAD_UP();
 					g_processing = TRUE;
@@ -3002,13 +3031,3 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 
     return msg.wParam;
 }
-#warning "work tips"
-/*
-*1.检查SPL,MFG烧录过程中进度显示是一次完成好，还是分次完成好，并修正代码
-*2.完成MFG烧录完成后的收尾工作，是在mfg_download里完成，还是processMFGCommand里完成
-*3.update_ui_resources和reset_ui_resources是否应该进一步优化修正
-*4.hwndInfo已经更改为全局变量，信息提示是否应该修正为哪里处理就哪里提示
-*5.工程整合，a.了解各工程的正确字符串，uni_image_header里的工程文件如何与本工程完成匹配
-*			  b.本工程源码应该如何管理
-*			  c.各项目的头文件和库的加入以及Makefile的修正
-*/

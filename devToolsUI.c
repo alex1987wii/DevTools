@@ -667,19 +667,23 @@ static inline int exec_in_tg(const char *script)
 	int retval = -1;
 #ifdef U3_LIB
 	/*write script into tmpfile then pass tmpfile name to file_download*/
-	char *tmp_file = tempname(NULL,"tmp");
+	char *tmp_file = tempnam(NULL,"tmp");
 	if(tmp_file == NULL)
 		return retval;
 	if(strlen(script) != write_file(script,strlen(script),tmp_file))
 		return retval;
-	retval = file_download(tmp_file,"/tmp/tmp_script.sh");
+	retval = file_download(ini_file_info.ip,tmp_file,"/tmp/.tmp_script");
 	remove(tmp_file);
 #else
-	retval = download_file(script,strlen(script),"/tmp/tmp_script.sh");		
+	retval = download_file(script,strlen(script),"/tmp/.tmp_script");		
 #endif
 	if(retval != 0)
 		return retval;
-	retval = exec_file_in_tg("/tmp/tmp_script.sh");
+#ifdef U3_LIB
+	retval = exec_file_in_tg(ini_file_info.ip,"/tmp/.tmp_script");
+#else
+	retval = exec_file_in_tg("/tmp/.tmp_script");
+#endif
 	return retval;
 }
 static inline int RebootTarget()
@@ -1906,7 +1910,7 @@ static BOOL linux_init(void)
 	/*make WinUpgradeLibInit run in backgroud_func*/
 
 #ifdef U3_LIB
-	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length);
+	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length,ini_file_info.ip,0/*reserved*/);
 #else
 	void *ptmp = realloc(image_buffer,image_length);
 	if(ptmp == NULL)
@@ -2043,8 +2047,12 @@ static int spl_download(void)
 	}
 	SetWindowText(hwndInfo,"Waiting for SPL download..");
 	if(burn_mode == SELECT_SPL_PROGRAMMING)
-		transfer_start();	
-	retval = burnSPL(ini_file_info.name_of_rescue_image,image_length);	
+		transfer_start();
+#ifdef U3_LIB
+	retval = burnSPL(ini_file_info.name_of_rescue_image);
+#else
+	retval = burnSPL(ini_file_info.name_of_rescue_image,image_length);
+#endif
 	if(retval != 0)
 	{
 		transfer_complete();
@@ -2201,9 +2209,25 @@ static int OnBtnCheckImgClick(void)
 			case SELECT_MFG_PROGRAMMING:
 			EnableWindow(hwndMFGBtnDown,TRUE);
 			break;
-		}		
+		}
+		update_ui_resources(TRUE);		
 	}		
-	update_ui_resources(TRUE);
+	else
+	{
+		update_ui_resources(TRUE);
+		switch(burn_mode)
+		{
+			case SELECT_LINUX_PROGRAMMING:
+			EnableWindow(hwndLinBtnDown,FALSE);
+			break;
+			case SELECT_MFG_PROGRAMMING:
+			EnableWindow(hwndMFGBtnDown,FALSE);
+			break;
+			case SELECT_SPL_PROGRAMMING:
+			EnableWindow(hwndSPLBtnDown,FALSE);
+			break;
+		}
+	}		
 	return 0;
 }
 
@@ -2267,7 +2291,7 @@ static int OnBtnFileDownload(void)
 	
 	SetWindowText(hwndFdNotify,"Download...");
 #ifdef U3_LIB
-	retval = file_download(file_for_pc,file_for_target);
+	retval = file_download(ini_file_info.ip,file_for_pc,file_for_target);
 #else
 	/*read file into buff and call download_file*/		
 	
@@ -2293,8 +2317,8 @@ static int OnBtnFileDownload(void)
 	}
 	printf("before download_file\n");
 	printf("file_for_target:%s\n",file_for_target);	
-	#warning "need remove when libupgrade.dll upgraded"
-	buff[file_len++] = 0;	
+	/* #warning "need remove when libupgrade.dll upgraded"
+	buff[file_len++] = 0; */	
 	retval = download_file(buff,file_len,file_for_target);
 	printf("retval = %d\n",retval);
 	printf("after download_file\n");	
@@ -2360,7 +2384,7 @@ static int OnBtnFileUpload(void)
 	}
 	SetWindowText(hwndFuNotify,"Upload...");
 #ifdef U3_LIB
-	retval = file_upload(file_for_pc,file_for_target);
+	retval = file_upload(ini_file_info.ip,file_for_pc,file_for_target);
 #else
 	/*read file into buff and call download_file*/			
 	
@@ -2951,6 +2975,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         MessageBox(NULL, TEXT ("Can not init debug "APP_TITLE), szAppName, MB_ICONERROR);
         return 0 ;
     }
+	
 	//Initialize net
 	WSADATA wsaData;
     int retval;
@@ -2960,6 +2985,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         printf("%s_%d: WSAStartup() error, error code is %d\n", __FILE__, __LINE__, WSAGetLastError());
         return 0;
     }
+	open_debug_log();
     g_event = CreateEvent(NULL, TRUE, FALSE, NULL); // ManualReset
     if (StartThread() == FALSE)
     {

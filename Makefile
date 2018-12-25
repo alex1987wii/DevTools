@@ -22,7 +22,7 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=G4_BBA
+PROJECT=U3_2ND
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA G4_BBA_V2 REPEATER_BBA M2 BR01
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
@@ -30,12 +30,13 @@ ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] &&
     $(warning)
     $(error you specified $(PROJECT) which is not a valid project)
 endif
-ifeq ($(PROJECT),U3)
-    LIB=U3
-else ifeq($(PROJECT),U3_2ND)
-    LIB=U3
-else
+
+U3LIB=U3 U3_2ND
+
+ifeq ($(strip $(foreach pro,$(U3LIB),$(shell [ "$(pro)" = "$(PROJECT)" ] && echo "$(PROJECT)"))),)
     LIB=Gx
+else
+    LIB=U3
 endif
 
 # compiler and bin utilities definitions
@@ -53,11 +54,12 @@ TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION)
 TARGET_DEV = UniDevTools.exe
 TARGET_MAINTAIN = UniMaintainTools.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
+WIN_UTIL_PATH=./output
+UTILS=./$(LIB)/lib/libupgrade.dll for_user_file.ini for_mfg_file.ini
 
- 
 DEPS = devToolsRes.h
 
-all: clean ./lib/libiniparser.a $(TARGETS)
+all: clean ./lib/libiniparser.a $(TARGETS) install
 
 ./lib/libiniparser.a:./src/dictionary.o ./src/iniparser.o
 	$(AR) rcs $@ $^
@@ -97,8 +99,18 @@ devToolsUI_product.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-install:
-	cp -rf $(TARGETS) $(WIN_UTIL_PATH)/
+prepare_dir:
+	[ -d "$(WIN_UTIL_PATH)" ] || mkdir $(WIN_UTIL_PATH)
+	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))
+	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))
+	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))
 
+install:prepare_dir
+	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf $(TARGET_DEV) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf $(TARGET_MAINTAIN)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
+	cp -rf $(TARGET_PRODUCTION)  $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 clean:
 	rm -f *.o $(TARGETS)

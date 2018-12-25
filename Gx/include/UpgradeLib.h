@@ -21,6 +21,7 @@ int upload_file(char *buf, unsigned int* len_of_transfer, char *abs_filename_in_
 int download_file(char *buf, unsigned int len_of_transfer, char *abs_filename_in_target);
 int exec_file_in_tg(char* filepath);
 #ifdef __cplusplus
+
 }
 #endif
 #endif

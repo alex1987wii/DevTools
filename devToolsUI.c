@@ -238,12 +238,17 @@ static const int burn_mode = SELECT_MFG_PROGRAMMING;
 #endif
 
 #define UNI_APP_MUTEX      "Unication Dev Tools"
-typedef int (*background_func)(void);
-typedef void (*complete_func)(int retval,void *private_data);
+typedef int (*background_func)(void );
+
+
 static background_func g_background_func = NULL;/*INVOKE by BackGroundThread*/
-static BOOL g_transfer_complete = FALSE;
+//static void *g_background_arg = NULL;
+
+typedef void (*complete_func)(int retval,void *private_data);
 static complete_func g_complete_func = NULL;/*INVOKE by WM_INVOKE_CALLBACK*/
 static void *g_complete_private_data = NULL;
+
+static BOOL g_transfer_complete = FALSE;
 static int g_locking = 0;
 static BOOL g_processing = FALSE;
 static int g_retval = 0;
@@ -295,7 +300,8 @@ static RECT rcClient; // rcClient.right, rcClient.bottom
 
 typedef struct _ini_file_info
 {
-    char ip[16]; // xxx.xxx.xxx.xxx
+	int ip_should_flash;
+    char ip[4][16]; // xxx.xxx.xxx.xxx
     char name_of_image[MAX_PATH];
 	char name_of_rescue_image[MAX_PATH];
 } ini_file_info_t;
@@ -303,11 +309,11 @@ typedef struct _ini_file_info
 static ini_file_info_t ini_file_info;
 static void *image_buffer = NULL;
 static int image_length = 0;
-static HWND    hwndInfo;
+static HWND    hwndInfo,hwndIpInfo;
 /**********************Linux Handler Declaration*************************/
 static HWND    hwndLinPage;
 static HWND    hwndLinGroupReadme;
-static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticNotice;
+static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticIpInfo,hwndLinStaticNotice;
 
 static HWND    hwndLinIpAddr,hwndLinDevList,hwndLinBtnRefresh;/*for Br01*/
 static HWND    hwndLinGroupOptions;
@@ -321,7 +327,7 @@ static HWND    hwndCheckBoxDelete,hwndCheckBoxSkipBatCheck;
 /**********************SPL Handler Declaration*************************/
 static HWND    hwndSPLPage;
 static HWND    hwndSPLGroupReadme;
-static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticNotice;
+static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticIpInfo,hwndSPLStaticNotice;
 
 static HWND    hwndSPLIpAddr,hwndSPLDevList,hwndSPLBtnRefresh;/*for Br01*/
 static HWND    hwndSPLGroupOptions;
@@ -333,7 +339,7 @@ static HWND    hwndSPLBtnCheckImg,hwndSPLBtnDown,hwndSPLBtnStop;
 
 static HWND    hwndMFGPage;
 static HWND    hwndMFGGroupReadme;
-static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticNotice;
+static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticIpInfo,hwndMFGStaticNotice;
 
 static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
 static HWND    hwndMFGGroupOptions;
@@ -573,7 +579,7 @@ static inline void reset_ui_resources(int page)
 		default:
 		UI_DEBUG("Invalid page");
 		break;
-	}
+	}	
 }
 
 static BOOL get_image_info(const char*image)
@@ -689,7 +695,7 @@ static inline int exec_in_tg(const char *script)
 		return retval;
 	if(strlen(script) != write_file(script,strlen(script),tmp_file))
 		return retval;
-	retval = file_download(ini_file_info.ip,tmp_file,"/tmp/.tmp_script");
+	retval = file_download(ini_file_info.ip[0],tmp_file,"/tmp/.tmp_script");
 	remove(tmp_file);
 #else
 	retval = download_file(script,strlen(script),"/tmp/.tmp_script");		
@@ -697,7 +703,7 @@ static inline int exec_in_tg(const char *script)
 	if(retval != 0)
 		return retval;
 #ifdef U3_LIB
-	retval = exec_file_in_tg(ini_file_info.ip,"/tmp/.tmp_script");
+	retval = exec_file_in_tg(ini_file_info.ip[0],"/tmp/.tmp_script");
 #else
 	retval = exec_file_in_tg("/tmp/.tmp_script");
 #endif
@@ -711,12 +717,33 @@ static inline int EnableTelnet()
 {
 	return exec_in_tg("#!/bin/sh\ntelent &\n");
 }
-
+static inline BOOL parse_ip_list(const char *ip_list)
+{
+	char buff[256],*ip;	
+	int ip_cnt = 0;
+	if(strlen(ip_list) > 256)
+		return FALSE;
+	strcpy(buff,ip_list);
+	ip = strtok(buff," ");	
+	while(ip)
+	{
+		if(strlen(ip) > 16)
+			return FALSE;
+		strcpy(ini_file_info.ip[ip_cnt++],ip);		
+		ip = strtok(NULL," ");
+	}
+	if(ip_cnt > 4)
+		return FALSE;
+	ini_file_info.ip_should_flash = ip_cnt;
+	return TRUE;
+}
 static inline BOOL parse_ini_file(const char *file)
 {	
-	char *ip,*image,*rescue_image;
+	char *ip_list,*image,*rescue_image;
 	/*read the ini file and parse it into struct*/
+	printf("before iniparser_load.\n");
 	dictionary *ini_config = iniparser_load(file);
+	printf("after iniparser_load.\n");
 	if(ini_config == NULL)
 	{		
 		return FALSE;
@@ -725,12 +752,11 @@ static inline BOOL parse_ini_file(const char *file)
 	{
 		goto EXIT;
 	}
-	ip = iniparser_getstring(ini_config,"Options:ip",NULL);
+	ip_list = iniparser_getstring(ini_config,"Options:ip",NULL);
 	image = iniparser_getstring(ini_config,"Options:image",NULL);
 	rescue_image = iniparser_getstring(ini_config,"Options:rescue_image",NULL);	
-	if(ip != NULL && image != NULL && strlen(ip) < 16 && strlen(image) < MAX_PATH)
+	if(ip_list != NULL && parse_ip_list(ip_list) && image != NULL && strlen(image) < MAX_PATH)
 	{		
-		strcpy(ini_file_info.ip,ip);
 		strcpy(ini_file_info.name_of_image,image);
 		if(rescue_image)
 			strcpy(ini_file_info.name_of_rescue_image,rescue_image);
@@ -752,13 +778,20 @@ static inline BOOL check_ini(void)
 		ERROR_MESSAGE("%s lost.",ini_file);
 		return FALSE;
 	}
+	printf("before parse_ini\n");
 	if(parse_ini_file(ini_file) == FALSE)
 	{
 		ERROR_MESSAGE("%s invalid configuration.",ini_file);
 		return FALSE;
 	}
 	printf("ini_file = %s\n",ini_file);
-	printf("ip = %s\nimage = %s\n",ini_file_info.ip,ini_file_info.name_of_image);
+	printf("ip_should_flash = %d\n",ini_file_info.ip_should_flash);
+	int i;
+	for(i = 0 ;i < ini_file_info.ip_should_flash;++i)
+	{
+		printf("ip = %s\n",ini_file_info.ip[i]);
+	}	
+	printf("image = %s\n",ini_file_info.name_of_image);
 	printf("rescue_image = %s\n",ini_file_info.name_of_rescue_image);
 	
 	return get_image_info(ini_file_info.name_of_image);
@@ -928,7 +961,7 @@ static void unregister_notifyer(void)
 static DWORD WINAPI TransferThread(LPVOID lpParam)
 {
 	int retval = 0;
-	unsigned short percent = 0;
+	unsigned char percent = 0;
 	unsigned short status = 0;
 	unsigned char index = 0;	
 	TCHAR text[256];
@@ -943,7 +976,8 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		{
 			/* if(hwndPop)
 				SendMessage(hwndMain,WM_DESTROY_PROGRESS_BAR,0,0); */
-			SetWindowText(hwndInfo,"Transfer complete.");
+			
+			//SetWindowText(hwndInfo,"Transfer complete.");
 			break;
 		}
 		retval = progress_reply_status_get(&index,&percent,&status);
@@ -1024,6 +1058,7 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
             if(g_background_func)
 			{
 				retval = g_background_func();
+				
 #if 0
 				if(retval != 0)
 					PostMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
@@ -1241,8 +1276,22 @@ static void InitLinuxWindow(void)
     debug_positions(hwndLinTextTarget, "hwndLinTextTarget");
 
       
-    relative_y += 2 * (HEIGHT_CONTROL + V_GAPS) + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL + V_GAPS + HEIGHT_CONTROL+35;
 
+	printf("hwndLinStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndLinStaticIpInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndLinStaticIpInfo, "hwndLinStaticIpInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
     printf("hwndLinStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
 
@@ -1381,7 +1430,7 @@ static void InitLinuxWindow(void)
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
     hwndBtnEnableTelnet = CreateWindow( TEXT("button"), "EnableTelnet",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            WS_CHILD /*| WS_VISIBLE */ | BS_PUSHBUTTON,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndLinPage, NULL,
@@ -1482,7 +1531,22 @@ static void InitSPLWindow(void)
     debug_positions(hwndSPLTextTarget, "hwndSPLTextTarget");
 
       
-    relative_y += 2 * (HEIGHT_CONTROL + V_GAPS) + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL + V_GAPS + HEIGHT_CONTROL+35;
+
+	printf("hwndSPLStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndSPLStaticIpInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndSPLPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndSPLStaticIpInfo, "hwndSPLStaticIpInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
 
     printf("hwndSPLStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
@@ -1652,7 +1716,21 @@ static void InitMFGWindow(void)
     debug_positions(hwndMFGTextTarget, "hwndMFGTextTarget");
 
       
-    relative_y += 2 * (HEIGHT_CONTROL + V_GAPS) + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL + V_GAPS + HEIGHT_CONTROL+35;
+
+	printf("hwndMFGStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndMFGStaticIpInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndMFGStaticIpInfo, "hwndMFGStaticIpInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
 
     printf("hwndMFGStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
@@ -1898,7 +1976,7 @@ static void PopProgressBar( void )
       
 }
 
-static BOOL linux_init(void)
+static BOOL linux_init(const char *ip)
 {
 	printf("linux_init..\n");
 	int retval = -1;
@@ -1914,13 +1992,14 @@ static BOOL linux_init(void)
 		ERROR_MESSAGE("%s not exsit.",ini_file_info.name_of_image);
 		return FALSE;
 	}
-	/*alloc memory for image_buffer,it will be released when tool terminated*/
+	
 	
 	/*make WinUpgradeLibInit run in backgroud_func*/
 
 #ifdef U3_LIB
-	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length,ini_file_info.ip,0/*reserved*/);
+	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length,ip,0/*reserved*/);
 #else
+	/*alloc memory for image_buffer,it will be released when tool terminated*/
 	void *ptmp = realloc(image_buffer,image_length);
 	if(ptmp == NULL)
 	{
@@ -1939,9 +2018,9 @@ static BOOL linux_init(void)
 		ERROR_MESSAGE("%s read error.",ini_file_info.name_of_image);
 		return FALSE;
 	}		
-	retval = WinUpgradeLibInit(image_buffer,image_length,ini_file_info.ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
+	retval = WinUpgradeLibInit(image_buffer,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
 #endif
-	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_length,ini_file_info.ip);
+	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_length,ip);
 	if(retval != 0)
 	{
 		/*just print the errcode string*/
@@ -1960,41 +2039,51 @@ static int linux_download(void)
 	then Down button will hiden,and Stop button show
 	*/
 	int retval = -1;
-	
-	SetWindowText(hwndInfo,"Waiting for target reboot into upgrade mode..");
-	if(FALSE == linux_init())
-	{
-		SetWindowText(hwndInfo,"Linux init error.");
-		//ERROR_MESSAGE("Error occurs,please try it again.");
-		goto linux_download_error;
-	}
-	SetWindowText(hwndInfo,"Linux init success.");
-	if(burn_mode == SELECT_LINUX_PROGRAMMING)
-		transfer_start();/*start a progress thread*/	
-	
+	const char *ip;
+	int i;
+	char ip_info[256];
+	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
+	{		
+		ip = ini_file_info.ip[i];
+#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND) || defined(CONFIG_PROJECT_M2) || defined(CONFIG_PROJECT_REPEATER_BBA))
+		snprintf(ip_info,256,"Ip : %s",ip);
+		printf("ip_info = %s\n",ip_info);
+		SetWindowText(hwndIpInfo,ip_info);		
+#endif
+		SetWindowText(hwndInfo,"Waiting for Linux device..");
+		if(FALSE == linux_init(ip))
+		{
+			SetWindowText(hwndInfo,"Linux init error.");
+			//ERROR_MESSAGE("Error occurs,please try it again.");
+			goto linux_download_error;
+		}
+		SetWindowText(hwndInfo,"Linux init success.");
+		if(burn_mode == SELECT_LINUX_PROGRAMMING)
+			transfer_start();/*start a progress thread*/	
+		
 #ifdef DEVELOPMENT
-	printf("partition_selected = 0x%04x\n",partition_selected);
-	retval = burnpartition(partition_selected);
+		printf("partition_selected = 0x%04x\n",partition_selected);
+		retval = burnpartition(partition_selected);
 #elif defined(MAINTAINMENT)
-	retval = burnImage();
+		retval = burnImage();
 #if 0	
-	if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
-		retval = burnpartition(0xxxx);
+		if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
+			retval = burnpartition(0xxxx);
 #endif
 #elif defined(PRODUCTION)
-	/*burn all partition*/
-	retval = burnpartition((1<<total_partition)-1);
+		/*burn all partition??*/
+		retval = burnpartition((1<<total_partition)-1);
 #endif
-	
-	if(burn_mode == SELECT_LINUX_PROGRAMMING)
-		transfer_complete();	
-	if(retval != 0)
-	{		
-		SetWindowText(hwndInfo,"Linux download failed!");
-		ERROR_MESSAGE("Linux download failed!Please try it again.");
-		goto linux_download_error;
+		
+		if(burn_mode == SELECT_LINUX_PROGRAMMING)
+			transfer_complete();	
+		if(retval != 0)
+		{		
+			SetWindowText(hwndInfo,"Linux download failed!");
+			ERROR_MESSAGE("Linux download failed!Please try it again.");
+			goto linux_download_error;
+		}
 	}
-	
 	if(burn_mode == SELECT_LINUX_PROGRAMMING)
 	{
 		/*reboot target*/
@@ -2016,6 +2105,7 @@ static int linux_download(void)
 		/*successfully downloaded,reset some environment*/
 		reset_ui_resources(SELECT_LINUX_PROGRAMMING);		
 	}
+	//SetWindowText(hwndIpInfo,"All ip complete.");
 	g_processing = FALSE;
 	return 0;
 linux_download_error:
@@ -2069,11 +2159,10 @@ static int spl_download(void)
 		ERROR_MESSAGE("SPL download error,please try it again.");		
 		goto spl_download_error;
 	}
-	SetWindowText(hwndInfo,"Waiting for Linux download..");	
 	retval = linux_download();	
 	if(retval != 0)
-		goto spl_download_error;	
-		
+		goto spl_download_error;
+	
 	if(burn_mode == SELECT_SPL_PROGRAMMING)
 	{
 		transfer_complete();
@@ -2096,7 +2185,7 @@ static int spl_download(void)
 		reset_ui_resources(SELECT_SPL_PROGRAMMING);
 	}
 	return 0;
-spl_download_error:	
+spl_download_error:
 	if(burn_mode == SELECT_SPL_PROGRAMMING)
 	{		
 		update_ui_resources(TRUE);
@@ -2159,6 +2248,9 @@ static int mfg_download(void)
 		ERROR_MESSAGE("MFG download error,please try it again.");
 		goto mfg_download_error;
 	}
+	
+	SetWindowText(hwndInfo,"Waiting for SPL device..");	
+	Sleep(2000);
 	SetWindowText(hwndInfo,"Waiting for SPL download..");	
 	retval = spl_download();	
 	if(retval != 0)
@@ -2188,7 +2280,7 @@ static int mfg_download(void)
 		reset_ui_resources(SELECT_MFG_PROGRAMMING);		
 	}
 	return 0;
-mfg_download_error:	
+mfg_download_error:
 	if(burn_mode == SELECT_MFG_PROGRAMMING)
 	{
 		g_on_batch = FALSE;		
@@ -2199,7 +2291,7 @@ mfg_download_error:
 }
 
 /*********************Nand Programing Button Process***********************/
-static int OnBtnCheckImgClick(void)
+static int OnBtnCheckImgClick(void )
 {	
 	update_ui_resources(FALSE);	
 	if(check_ini() == TRUE)
@@ -2245,7 +2337,7 @@ static int OnBtnRefreshClick(void)
 {
 	return 0;
 }
-static int OnBtnEnableTelnetClick(void)
+static int OnBtnEnableTelnetClick(void )
 {
 	/*save button LinBtnDown's status*/ 
 	WINDOWINFO info_for_btn_down;
@@ -2290,7 +2382,7 @@ static int OnBtnFileDownload(void)
 	/*Disable Main Window and prepare to download*/
 	EnableWindow(hwndTab,FALSE);
 	SetWindowText(hwndFdNotify,"Init network..");
-	if(linux_init() == FALSE)
+	if(linux_init(ini_file_info.ip[0]) == FALSE)
 	{
 		EnableWindow(hwndTab,TRUE);
 		SetWindowText(hwndFdNotify,"Init network error.");
@@ -2300,7 +2392,7 @@ static int OnBtnFileDownload(void)
 	
 	SetWindowText(hwndFdNotify,"Download...");
 #ifdef U3_LIB
-	retval = file_download(ini_file_info.ip,file_for_pc,file_for_target);
+	retval = file_download(ini_file_info.ip[0],file_for_pc,file_for_target);
 #else
 	/*read file into buff and call download_file*/		
 	
@@ -2385,7 +2477,7 @@ static int OnBtnFileUpload(void)
 	
 	EnableWindow(hwndTab,FALSE);
 	SetWindowText(hwndFuNotify,"Init network..");
-	if(linux_init() == FALSE)
+	if(linux_init(ini_file_info.ip[0]) == FALSE)
 	{
 		EnableWindow(hwndTab,TRUE);
 		SetWindowText(hwndFuNotify,"Init network error.");
@@ -2393,7 +2485,7 @@ static int OnBtnFileUpload(void)
 	}
 	SetWindowText(hwndFuNotify,"Upload...");
 #ifdef U3_LIB
-	retval = file_upload(ini_file_info.ip,file_for_pc,file_for_target);
+	retval = file_upload(ini_file_info.ip[0],file_for_pc,file_for_target);
 #else
 	/*read file into buff and call download_file*/			
 	
@@ -2493,6 +2585,8 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	
 /*haven't add devipaddr process yet*/	
 	HWND hwnd = (HWND)lParam;
+	SetWindowText(hwndInfo,"");
+	SetWindowText(hwndIpInfo,"");
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
 	{
@@ -2537,7 +2631,8 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	
+	SetWindowText(hwndInfo,"");
+	SetWindowText(hwndIpInfo,"");
 	if(hwnd == hwndSPLBtnDown)
 	{
 		int i;
@@ -2565,7 +2660,8 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-		
+	SetWindowText(hwndInfo,"");
+	SetWindowText(hwndIpInfo,"");	
 	if(hwnd == hwndMFGBtnDown)
 	{
 #ifdef DEVELOPMENT
@@ -2683,6 +2779,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndFileTransferPage,FALSE);
 						ini_file = "for_mfg_file.ini";
 						hwndInfo = hwndMFGStaticInfo;
+						hwndIpInfo = hwndMFGStaticIpInfo;
 						break;
 						case SELECT_SPL_PROGRAMMING:
 						ShowWindow(hwndMFGPage,FALSE);
@@ -2691,6 +2788,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndFileTransferPage,FALSE);
 						ini_file = "for_mfg_file.ini";
 						hwndInfo = hwndSPLStaticInfo;
+						hwndIpInfo = hwndSPLStaticIpInfo;
 						break;
 						case SELECT_LINUX_PROGRAMMING:
 						ShowWindow(hwndMFGPage,FALSE);
@@ -2698,6 +2796,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndLinPage,TRUE);
 						ShowWindow(hwndFileTransferPage,FALSE);
 						hwndInfo = hwndLinStaticInfo;
+						hwndIpInfo = hwndLinStaticIpInfo;
 						ini_file = "for_user_file.ini";
 						break;
 						case SELECT_FILE_TRANSFER:
@@ -2707,6 +2806,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndFileTransferPage,TRUE);
 						ini_file = "for_user_file.ini";							
 						hwndInfo = hwndFdNotify;
+						hwndIpInfo = NULL;
 						break;
 					}						
                     
@@ -3026,12 +3126,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	InitMFGWindow();
 	InitFileTransferWindow();
 	hwndInfo = hwndLinStaticInfo;
+	hwndIpInfo = hwndLinStaticIpInfo;
 #elif defined(MAINTAINMENT)
 	InitLinuxWindow();
 	hwndInfo = hwndLinStaticInfo;
+	hwndIpInfo = hwndLinStaticIpInfo;
 #elif defined(PRODUCTION)
 	InitMFGWindow();
 	hwndInfo = hwndMFGStaticInfo;
+	hwndIpInfo = hwndMFGStaticIpInfo;
 #endif	
     register_notifyer();
 

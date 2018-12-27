@@ -1436,7 +1436,7 @@ static void InitLinuxWindow(void)
     debug_positions(hwndBtnEnableTelnet, "hwndBtnEnableTelnet");
 	relative_y += HEIGHT_CONTROL + V_GAPS*2;
 #endif
-#if (defined(CONFIG_PROJECT_G4_BBA) )/*G4 support battery check*/	
+#ifndef U3_LIB	
     printf("hwndCheckBoxSkipBatCheck's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x-4*X_MARGIN, relative_y, WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5);
 

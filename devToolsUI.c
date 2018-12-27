@@ -724,13 +724,13 @@ static inline BOOL parse_ip_list(const char *ip_list)
 	if(strlen(ip_list) > 256)
 		return FALSE;
 	strcpy(buff,ip_list);
-	ip = strtok(buff," ");	
+	ip = strtok(buff," \t");	
 	while(ip)
 	{
 		if(strlen(ip) > 16)
 			return FALSE;
 		strcpy(ini_file_info.ip[ip_cnt++],ip);		
-		ip = strtok(NULL," ");
+		ip = strtok(NULL," \t");
 	}
 	if(ip_cnt > 4)
 		return FALSE;
@@ -741,9 +741,7 @@ static inline BOOL parse_ini_file(const char *file)
 {	
 	char *ip_list,*image,*rescue_image;
 	/*read the ini file and parse it into struct*/
-	printf("before iniparser_load.\n");
 	dictionary *ini_config = iniparser_load(file);
-	printf("after iniparser_load.\n");
 	if(ini_config == NULL)
 	{		
 		return FALSE;
@@ -777,8 +775,7 @@ static inline BOOL check_ini(void)
 	{
 		ERROR_MESSAGE("%s lost.",ini_file);
 		return FALSE;
-	}
-	printf("before parse_ini\n");
+	}	
 	if(parse_ini_file(ini_file) == FALSE)
 	{
 		ERROR_MESSAGE("%s invalid configuration.",ini_file);
@@ -2305,9 +2302,19 @@ static int OnBtnCheckImgClick(void )
 			EnableWindow(hwndLinBtnDown,TRUE);
 			break;
 			case SELECT_SPL_PROGRAMMING:
+			if(ini_file_info.name_of_rescue_image[0] == 0)
+			{
+				ERROR_MESSAGE("must specify rescue_image in %s",ini_file);
+				break;
+			}
 			EnableWindow(hwndSPLBtnDown,TRUE);
 			break;
 			case SELECT_MFG_PROGRAMMING:
+			if(ini_file_info.name_of_rescue_image[0] == 0)
+			{
+				ERROR_MESSAGE("must specify rescue_image in %s",ini_file);
+				break;
+			}
 			EnableWindow(hwndMFGBtnDown,TRUE);
 			break;
 		}

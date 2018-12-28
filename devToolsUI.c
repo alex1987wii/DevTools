@@ -686,37 +686,13 @@ static inline int write_file(void *buff,int len,const char *filename)
 	return retval;
 }
 
-static inline int exec_in_tg(const char *script)
+static inline int RebootTarget(const char *ip)
 {	
-	int retval = -1;
-#ifdef U3_LIB
-	/*write script into tmpfile then pass tmpfile name to file_download*/
-	char *tmp_file = tempnam(NULL,"tmp");
-	if(tmp_file == NULL)
-		return retval;
-	if(strlen(script) != write_file(script,strlen(script),tmp_file))
-		return retval;
-	retval = file_download(ini_file_info.ip[0],tmp_file,"/tmp/.tmp_script");
-	remove(tmp_file);
-#else
-	retval = download_file(script,strlen(script),"/tmp/.tmp_script");		
-#endif
-	if(retval != 0)
-		return retval;
-#ifdef U3_LIB
-	retval = exec_file_in_tg(ini_file_info.ip[0],"/tmp/.tmp_script");
-#else
-	retval = exec_file_in_tg("/tmp/.tmp_script");
-#endif
-	return retval;
+	return execute_cmd_in_tg(ip,"reboot");
 }
-static inline int RebootTarget()
-{	
-	return exec_in_tg("#!/bin/sh\nreboot\n");
-}
-static inline int EnableTelnet()
+static inline int EnableTelnet(const char *ip)
 {
-	return exec_in_tg("#!/bin/sh\ntelent &\n");
+	return execute_cmd_in_tg(ip,"telnetd &");
 }
 static inline BOOL parse_ip_list(const char *ip_list)
 {
@@ -969,7 +945,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
 
 	
-	SetWindowText(hwndInfo,"Preparing..");
+	//SetWindowText(hwndInfo,"Preparing..");
 	while(1)
 	{
 		Sleep(250);
@@ -1461,7 +1437,7 @@ static void InitLinuxWindow(void)
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
     hwndBtnEnableTelnet = CreateWindow( TEXT("button"), "EnableTelnet",
-            WS_CHILD /*| WS_VISIBLE */ | BS_PUSHBUTTON,
+            WS_CHILD | WS_VISIBLE  | BS_PUSHBUTTON,
             relative_x, relative_y,
             WIDTH_BUTTON, HEIGHT_CONTROL,
             hwndLinPage, NULL,
@@ -2056,30 +2032,9 @@ static BOOL linux_init(const char *ip)
 	
 	/*make WinUpgradeLibInit run in backgroud_func*/
 
-#ifdef U3_LIB
-	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length,ip,0/*reserved*/);
-#else
-	/*alloc memory for image_buffer,it will be released when tool terminated*/
-	void *ptmp = realloc(image_buffer,image_length);
-	if(ptmp == NULL)
-	{
-		free(image_buffer);
-		image_buffer = NULL;
-		ERROR_MESSAGE("Out of memory.");
-		return FALSE;
-	}
-	image_buffer = ptmp;
-	/*read image into iamge_buffer*/
-	retval = read_file(image_buffer,image_length,ini_file_info.name_of_image);
-	if(image_length != retval)
-	{
-		printf("ini_file_info.name_of_image = %s\n",ini_file_info.name_of_image);
-		printf("retval = %d, image_length = %d\n",retval,image_length);
-		ERROR_MESSAGE("%s read error.",ini_file_info.name_of_image);
-		return FALSE;
-	}		
-	retval = WinUpgradeLibInit(image_buffer,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
-#endif
+
+	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
+
 	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_length,ip);
 	if(retval != 0)
 	{
@@ -2092,12 +2047,7 @@ static BOOL linux_init(const char *ip)
 
 static int linux_download(void)
 {
-	/*begin to download partition.
-	if it's for consumer,then it's according the ini file,
-	if it's for developer,then it's according the autocheckbox,
-	if it's for factory,then it's MFG burning,and if Batch box is checked,
-	then Down button will hiden,and Stop button show
-	*/
+	
 	int retval = -1;
 	const char *ip;
 	int i;
@@ -2143,28 +2093,29 @@ static int linux_download(void)
 			ERROR_MESSAGE("Linux download failed!Please try it again.");
 			goto linux_download_error;
 		}
-	}
-	if(burn_mode == SELECT_LINUX_PROGRAMMING)
-	{
-		/*reboot target*/
-		SetWindowText(hwndInfo,"Rebooting target..");
-		
-		retval = RebootTarget();
-		if(retval != 0)
+	
+		if(burn_mode == SELECT_LINUX_PROGRAMMING)
 		{
-			SetWindowText(hwndInfo,"Reboot target failed.");
-			ERROR_MESSAGE("Reboot target failed!,you need reboot it manully.");
-			goto linux_download_error;
+			/*reboot target*/
+		/* 	SetWindowText(hwndInfo,"Rebooting target..");
+			
+			retval = RebootTarget();
+			if(retval != 0)
+			{
+				SetWindowText(hwndInfo,"Reboot target failed.");
+				ERROR_MESSAGE("Reboot target failed!,you need reboot it manully.");
+				goto linux_download_error;
+			}
+			else
+			{ */
+				SetWindowText(hwndInfo,"Download Complete!");
+				MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
+			//}
+			update_ui_resources(TRUE);
+			/*successfully downloaded,reset some environment*/
+			reset_ui_resources(SELECT_LINUX_PROGRAMMING);
+			g_processing = FALSE;		
 		}
-		else
-		{
-			SetWindowText(hwndInfo,"Download Complete!");
-			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
-		}
-		update_ui_resources(TRUE);
-		/*successfully downloaded,reset some environment*/
-		reset_ui_resources(SELECT_LINUX_PROGRAMMING);
-		g_processing = FALSE;		
 	}
 	//SetWindowText(hwndIpInfo,"All ip complete.");
 	
@@ -2208,11 +2159,9 @@ static int spl_download(void)
 	SetWindowText(hwndInfo,"Waiting for SPL download..");
 	if(burn_mode == SELECT_SPL_PROGRAMMING)
 		transfer_start();
-#ifdef U3_LIB
+	
 	retval = burnSPL(ini_file_info.name_of_rescue_image);
-#else
-	retval = burnSPL(ini_file_info.name_of_rescue_image,image_length);
-#endif
+
 	if(retval != 0)
 	{
 		transfer_complete();
@@ -2228,7 +2177,7 @@ static int spl_download(void)
 	{
 		transfer_complete();
 		/*reboot target*/
-		SetWindowText(hwndInfo,"Rebooting target..");		
+		/* SetWindowText(hwndInfo,"Rebooting target..");		
 		retval = RebootTarget();
 		if(retval != 0)
 		{
@@ -2237,10 +2186,10 @@ static int spl_download(void)
 			goto spl_download_error;
 		}
 		else
-		{
+		{ */
 			SetWindowText(hwndInfo,"Download Complete!");
 			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
-		}
+		//}
 		listening_on = IS_LISTENING_ON_NOTHING;
 		update_ui_resources(TRUE);
 		reset_ui_resources(SELECT_SPL_PROGRAMMING);
@@ -2326,7 +2275,7 @@ static int mfg_download(void)
 	{
 		transfer_complete();
 		/*reboot target*/
-		SetWindowText(hwndInfo,"Rebooting target..");		
+		/* SetWindowText(hwndInfo,"Rebooting target..");		
 		retval = RebootTarget();
 		if(retval != 0)
 		{
@@ -2335,10 +2284,10 @@ static int mfg_download(void)
 			goto mfg_download_error;
 		}
 		else
-		{
+		{ */
 			SetWindowText(hwndInfo,"Download Complete!");
 			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
-		}		
+		//}		
 		update_ui_resources(TRUE);
 		reset_ui_resources(SELECT_MFG_PROGRAMMING);
 		g_processing = FALSE;		
@@ -2420,7 +2369,7 @@ static int OnBtnEnableTelnetClick(void )
 	GetWindowInfo(hwndLinBtnDown,&info_for_btn_down);
 	update_ui_resources(FALSE);
 	SetWindowText(hwndInfo,"EnableTelnet..");
-	int retval = EnableTelnet();
+	int retval = EnableTelnet("10.10.0.12");
 	if(retval != 0)
 	{
 		SetWindowText(hwndInfo,"EnableTelnet Failed.");

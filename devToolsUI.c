@@ -309,15 +309,16 @@ typedef struct _ini_file_info
 static ini_file_info_t ini_file_info;
 static void *image_buffer = NULL;
 static int image_length = 0;
-static HWND    hwndInfo,hwndIpInfo;
+static HWND    hwndInfo,hwndIpInfo,hwndProcessInfo;
+
 /**********************Linux Handler Declaration*************************/
 static HWND    hwndLinPage;
 static HWND    hwndLinGroupReadme;
-static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticIpInfo,hwndLinStaticNotice;
+static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticIpInfo,hwndLinProcessInfo,hwndLinStaticNotice;
 
 static HWND    hwndLinIpAddr,hwndLinDevList,hwndLinBtnRefresh;/*for Br01*/
 static HWND    hwndLinGroupOptions;
-/*not used now
+/*
 static HWND    hwndEditBrowser;
 */
 static HWND    hwndLinBtnCheckImg,hwndLinBtnDown,hwndBtnEnableTelnet;
@@ -327,9 +328,9 @@ static HWND    hwndCheckBoxDelete,hwndCheckBoxSkipBatCheck;
 /**********************SPL Handler Declaration*************************/
 static HWND    hwndSPLPage;
 static HWND    hwndSPLGroupReadme;
-static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticIpInfo,hwndSPLStaticNotice;
+static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticIpInfo,hwndSPLProcessInfo,hwndSPLStaticNotice;
 
-static HWND    hwndSPLIpAddr,hwndSPLDevList,hwndSPLBtnRefresh;/*for Br01*/
+//static HWND    hwndSPLIpAddr,hwndSPLDevList,hwndSPLBtnRefresh;/*for Br01*/
 static HWND    hwndSPLGroupOptions;
 
 static HWND    hwndSPLBtnCheckImg,hwndSPLBtnDown,hwndSPLBtnStop;
@@ -339,9 +340,9 @@ static HWND    hwndSPLBtnCheckImg,hwndSPLBtnDown,hwndSPLBtnStop;
 
 static HWND    hwndMFGPage;
 static HWND    hwndMFGGroupReadme;
-static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticIpInfo,hwndMFGStaticNotice;
+static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticIpInfo,hwndMFGProcessInfo,hwndMFGStaticNotice;
 
-static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
+//static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
 static HWND    hwndMFGGroupOptions;
 
 
@@ -962,21 +963,40 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	unsigned short status = 0;
 	unsigned char index = 0;	
 	TCHAR text[256];
-	
+	char process_info[64] = "Processing";
+	char *dynamic_pos = process_info + strlen(process_info);
+	int count = 0;
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
 
+	
 	SetWindowText(hwndInfo,"Preparing..");
 	while(1)
 	{
 		Sleep(250);
+		
 		if(g_transfer_complete)
 		{
 			/* if(hwndPop)
 				SendMessage(hwndMain,WM_DESTROY_PROGRESS_BAR,0,0); */
 			
 			//SetWindowText(hwndInfo,"Transfer complete.");
+			SetWindowText(hwndProcessInfo,"");
 			break;
 		}
+		/*update Process info every half second*/
+		if(count%2 == 0)
+		{
+			int i;
+			for(i = 0; i < count/2; ++i)
+			{
+				dynamic_pos[i] = '.';
+			}
+			dynamic_pos[i] = 0;
+			SetWindowText(hwndProcessInfo,process_info);
+		}
+		++count;
+		count %= 2 * 6;/*there is ...... total 6 chars*/
+		
 		retval = progress_reply_status_get(&index,&percent,&status);
 #ifdef ENABLE_DEBUG
 		printf("retval = %d, status = %d, index = %02x, percent = %d\n",
@@ -1273,8 +1293,22 @@ static void InitLinuxWindow(void)
     debug_positions(hwndLinTextTarget, "hwndLinTextTarget");
 
       
-    relative_y += HEIGHT_CONTROL + V_GAPS + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL+35;
 
+	printf("hwndLinProcessInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndLinProcessInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndLinProcessInfo, "hwndLinProcessInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
 	printf("hwndLinStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
 
@@ -1528,7 +1562,22 @@ static void InitSPLWindow(void)
     debug_positions(hwndSPLTextTarget, "hwndSPLTextTarget");
 
       
-    relative_y += HEIGHT_CONTROL + V_GAPS + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL+35;
+	
+	printf("hwndSPLProcessInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndSPLProcessInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndSPLPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndSPLProcessInfo, "hwndSPLProcessInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
+	
 
 	printf("hwndSPLStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
@@ -1713,7 +1762,21 @@ static void InitMFGWindow(void)
     debug_positions(hwndMFGTextTarget, "hwndMFGTextTarget");
 
       
-    relative_y += HEIGHT_CONTROL + V_GAPS + HEIGHT_CONTROL+35;
+    relative_y += HEIGHT_CONTROL+35;
+	
+	printf("hwndMFGProcessInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
+            relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
+
+    hwndMFGProcessInfo = CreateWindow( TEXT("static"), "",
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            relative_x, relative_y,
+            STATIC_WIDTH, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL);
+
+    debug_positions(hwndMFGProcessInfo, "hwndMFGProcessInfo");
+	
+	relative_y += HEIGHT_CONTROL + V_GAPS;
 
 	printf("hwndMFGStaticIpInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL);
@@ -2069,7 +2132,7 @@ static int linux_download(void)
 #endif
 #elif defined(PRODUCTION)
 		/*burn all partition??*/
-		retval = burnpartition((1<<total_partition)-1);
+		retval = burnpartition(((1<<total_partition)-1)&~(1<<3));
 #endif
 		
 		if(burn_mode == SELECT_LINUX_PROGRAMMING)
@@ -2100,19 +2163,20 @@ static int linux_download(void)
 		}
 		update_ui_resources(TRUE);
 		/*successfully downloaded,reset some environment*/
-		reset_ui_resources(SELECT_LINUX_PROGRAMMING);		
+		reset_ui_resources(SELECT_LINUX_PROGRAMMING);
+		g_processing = FALSE;		
 	}
 	//SetWindowText(hwndIpInfo,"All ip complete.");
-	g_processing = FALSE;
+	
 	return 0;
 linux_download_error:
 	if(burn_mode == SELECT_LINUX_PROGRAMMING)
 	{		
 		update_ui_resources(TRUE);
+		g_processing = FALSE;
 	}
 	else
 		transfer_complete();
-	g_processing = FALSE;
 	
 	return retval;
 }
@@ -2180,12 +2244,14 @@ static int spl_download(void)
 		listening_on = IS_LISTENING_ON_NOTHING;
 		update_ui_resources(TRUE);
 		reset_ui_resources(SELECT_SPL_PROGRAMMING);
+		g_processing = FALSE;
 	}
 	return 0;
 spl_download_error:
 	if(burn_mode == SELECT_SPL_PROGRAMMING)
 	{		
 		update_ui_resources(TRUE);
+		g_processing = FALSE;
 	}
 	return retval;
 }
@@ -2274,7 +2340,8 @@ static int mfg_download(void)
 			MessageBox(hwndMain,TEXT("Complete!"),szAppName,MB_ICONINFORMATION);
 		}		
 		update_ui_resources(TRUE);
-		reset_ui_resources(SELECT_MFG_PROGRAMMING);		
+		reset_ui_resources(SELECT_MFG_PROGRAMMING);
+		g_processing = FALSE;		
 	}
 	return 0;
 mfg_download_error:
@@ -2283,6 +2350,7 @@ mfg_download_error:
 		g_on_batch = FALSE;		
 		update_ui_resources(TRUE);
 		reset_ui_resources(SELECT_MFG_PROGRAMMING);
+		g_processing = FALSE;
 	}
 	return retval;
 }
@@ -2588,12 +2656,15 @@ static BOOL ProcessFileTransferCommand(WPARAM wParam, LPARAM lParam)
 }
 
 static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
-{
+{	
 	
-/*haven't add devipaddr process yet*/	
 	HWND hwnd = (HWND)lParam;
-	SetWindowText(hwndInfo,"");
-	SetWindowText(hwndIpInfo,"");
+	if(g_processing == FALSE)
+	{
+		SetWindowText(hwndInfo,"");
+		SetWindowText(hwndIpInfo,"");
+		SetWindowText(hwndProcessInfo,"");
+	}
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
 	{
@@ -2638,8 +2709,12 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	SetWindowText(hwndInfo,"");
-	SetWindowText(hwndIpInfo,"");
+	if(g_processing == FALSE)
+	{
+		SetWindowText(hwndInfo,"");
+		SetWindowText(hwndIpInfo,"");
+		SetWindowText(hwndProcessInfo,"");
+	}
 	if(hwnd == hwndSPLBtnDown)
 	{
 		int i;
@@ -2667,8 +2742,12 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	SetWindowText(hwndInfo,"");
-	SetWindowText(hwndIpInfo,"");	
+	if(g_processing == FALSE)
+	{
+		SetWindowText(hwndInfo,"");
+		SetWindowText(hwndIpInfo,"");
+		SetWindowText(hwndProcessInfo,"");
+	}
 	if(hwnd == hwndMFGBtnDown)
 	{
 #ifdef DEVELOPMENT
@@ -2681,6 +2760,16 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		if(partition_selected == 0)
 		{
 			ERROR_MESSAGE("No partition select.");
+			return TRUE;
+		}
+#else
+		if(check_ini() == FALSE)
+		{			
+			return TRUE;
+		}
+		if(ini_file_info.name_of_rescue_image[0] == 0)
+		{
+			ERROR_MESSAGE("must specify rescue_image in %s",ini_file);
 			return TRUE;
 		}
 #endif
@@ -2703,12 +2792,12 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		WAKE_THREAD_UP();
 	}
 	else if(hwnd == hwndMFGBtnStop)
-	{
+	{		
 		if(g_processing == FALSE)
 		{
 			update_ui_resources(TRUE);		
 			listening_on = IS_LISTENING_ON_NOTHING;
-			SetWindowText(hwndMFGStaticInfo,"");
+			SetWindowText(hwndMFGStaticInfo,"");			
 		}		
 		g_on_batch = FALSE;
 		ShowWindow(hwndMFGBtnDown,TRUE);
@@ -2740,8 +2829,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
     switch(message)
     {
         case WM_COMMAND:		
-		if(g_locking == TRUE)
-			break;
+		/* if(g_locking == TRUE)
+			break; */
 		if(hwnd == hwndLinPage)
 			return ProcessLinuxCommand(wParam,lParam);
 		else if(hwnd == hwndSPLPage)
@@ -2764,7 +2853,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
             break;
         case WM_TIMER: /* trigger by timeout */            
                 
-            return TRUE;
+        return TRUE;
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)
             {
@@ -2787,6 +2876,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ini_file = "for_mfg_file.ini";
 						hwndInfo = hwndMFGStaticInfo;
 						hwndIpInfo = hwndMFGStaticIpInfo;
+						hwndProcessInfo = hwndMFGProcessInfo;
 						break;
 						case SELECT_SPL_PROGRAMMING:
 						ShowWindow(hwndMFGPage,FALSE);
@@ -2796,6 +2886,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ini_file = "for_mfg_file.ini";
 						hwndInfo = hwndSPLStaticInfo;
 						hwndIpInfo = hwndSPLStaticIpInfo;
+						hwndProcessInfo = hwndSPLProcessInfo;
 						break;
 						case SELECT_LINUX_PROGRAMMING:
 						ShowWindow(hwndMFGPage,FALSE);
@@ -2804,6 +2895,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndFileTransferPage,FALSE);
 						hwndInfo = hwndLinStaticInfo;
 						hwndIpInfo = hwndLinStaticIpInfo;
+						hwndProcessInfo = hwndLinProcessInfo;
 						ini_file = "for_user_file.ini";
 						break;
 						case SELECT_FILE_TRANSFER:
@@ -2814,6 +2906,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ini_file = "for_user_file.ini";							
 						hwndInfo = hwndFdNotify;
 						hwndIpInfo = NULL;
+						hwndProcessInfo = NULL;
 						break;
 					}						
                     
@@ -3134,14 +3227,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	InitFileTransferWindow();
 	hwndInfo = hwndLinStaticInfo;
 	hwndIpInfo = hwndLinStaticIpInfo;
+	hwndProcessInfo = hwndLinProcessInfo;
 #elif defined(MAINTAINMENT)
 	InitLinuxWindow();
 	hwndInfo = hwndLinStaticInfo;
 	hwndIpInfo = hwndLinStaticIpInfo;
+	hwndProcessInfo = hwndSPLProcessInfo;
 #elif defined(PRODUCTION)
 	InitMFGWindow();
 	hwndInfo = hwndMFGStaticInfo;
 	hwndIpInfo = hwndMFGStaticIpInfo;
+	hwndProcessInfo = hwndMFGProcessInfo;
 #endif	
     register_notifyer();
 

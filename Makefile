@@ -22,7 +22,7 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=REPEATER_BBA
+PROJECT=G4_BBA
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA G4_BBA_V2 REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
@@ -106,7 +106,7 @@ prepare_dir:
 	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))
 
 install:prepare_dir
-	cp -rf for_user_file.ini for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf for_user_file.ini for_mfg_file.ini readme.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf $(TARGET_DEV) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf for_user_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/

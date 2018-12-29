@@ -1,0 +1,5 @@
+1.dynamic information -- done
+2.error process -- waiting for code
+3.optimize process procedure -- waiting for optimize
+4.redefine and code for updata_ui_resource and reset_ui_resource -- waiting for done
+5.let user to choose the image in UI,but not in ini file

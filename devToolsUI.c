@@ -94,6 +94,8 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define WM_DESTROY_PARTITION_LIST	(WM_USER+113)
 #define WM_ERROR					(WM_USER+114)
 
+/*****************TIMER ID********************/
+#define TIMER_DYNAMIC_INFO			1
 
 #define DISABLE						0
 #define ENABLE						1
@@ -310,6 +312,9 @@ static ini_file_info_t ini_file_info;
 static void *image_buffer = NULL;
 static int image_length = 0;
 static HWND    hwndInfo,hwndIpInfo,hwndProcessInfo;
+static HWND    hwndDynamic = NULL;
+static const char *dynamic_info = NULL;
+
 
 /**********************Linux Handler Declaration*************************/
 static HWND    hwndLinPage;
@@ -427,6 +432,18 @@ void ExitDebugConsole( void )
 }
 
 #endif
+
+static inline void SetDynamicInfo(const char *info)
+{
+	hwndDynamic = hwndInfo;
+	dynamic_info = info;
+	SetWindowText(hwndDynamic,info);/*show the initial information*/
+	SetTimer(hwndMain,TIMER_DYNAMIC_INFO,500,NULL);/*update every half second*/
+}
+static inline void StopDynamicInfo()
+{
+	KillTimer(hwndMain,TIMER_DYNAMIC_INFO);
+}
 
 static inline void CreatePartitionList(void)
 {
@@ -939,11 +956,8 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	unsigned short status = 0;
 	unsigned char index = 0;	
 	TCHAR text[256];
-	char process_info[64] = "Processing";
-	char *dynamic_pos = process_info + strlen(process_info);
-	int count = 0;
+	
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
-
 	
 	//SetWindowText(hwndInfo,"Preparing..");
 	while(1)
@@ -956,22 +970,9 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 				SendMessage(hwndMain,WM_DESTROY_PROGRESS_BAR,0,0); */
 			
 			//SetWindowText(hwndInfo,"Transfer complete.");
-			SetWindowText(hwndProcessInfo,"");
+			//SetWindowText(hwndProcessInfo,"");
 			break;
 		}
-		/*update Process info every half second*/
-		if(count%2 == 0)
-		{
-			int i;
-			for(i = 0; i < count/2; ++i)
-			{
-				dynamic_pos[i] = '.';
-			}
-			dynamic_pos[i] = 0;
-			SetWindowText(hwndProcessInfo,process_info);
-		}
-		++count;
-		count %= 2 * 6;/*there is ...... total 6 chars*/
 		
 		retval = progress_reply_status_get(&index,&percent,&status);
 #ifdef ENABLE_DEBUG
@@ -2033,8 +2034,9 @@ static BOOL linux_init(const char *ip)
 	/*make WinUpgradeLibInit run in backgroud_func*/
 
 
+	SetDynamicInfo("Waiting for Linux device");
 	retval = WinUpgradeLibInit(ini_file_info.name_of_image,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
-
+	StopDynamicInfo();
 	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",ini_file_info.name_of_image,image_length,ip);
 	if(retval != 0)
 	{
@@ -2612,7 +2614,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	{
 		SetWindowText(hwndInfo,"");
 		SetWindowText(hwndIpInfo,"");
-		SetWindowText(hwndProcessInfo,"");
+		//SetWindowText(hwndProcessInfo,"");
 	}
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
@@ -2662,7 +2664,7 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 	{
 		SetWindowText(hwndInfo,"");
 		SetWindowText(hwndIpInfo,"");
-		SetWindowText(hwndProcessInfo,"");
+		//SetWindowText(hwndProcessInfo,"");
 	}
 	if(hwnd == hwndSPLBtnDown)
 	{
@@ -2695,7 +2697,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 	{
 		SetWindowText(hwndInfo,"");
 		SetWindowText(hwndIpInfo,"");
-		SetWindowText(hwndProcessInfo,"");
+		//SetWindowText(hwndProcessInfo,"");
 	}
 	if(hwnd == hwndMFGBtnDown)
 	{
@@ -2800,8 +2802,26 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
                 }                
             }
             break;
-        case WM_TIMER: /* trigger by timeout */            
-                
+        case WM_TIMER:
+		switch(wParam)
+		{
+			case TIMER_DYNAMIC_INFO:
+			{
+				TCHAR text[256];
+				strncpy(text,dynamic_info,250);
+				static int count = 0;
+				++count;
+				count %= 6;
+				int i;
+				for(i = 0; i < count; ++i)
+				{
+					text[strlen(dynamic_info) + i] = '.';
+				}
+				text[strlen(dynamic_info) + i] = 0;
+				SetWindowText(hwndDynamic,text);
+			}
+			break;
+		}
         return TRUE;
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)

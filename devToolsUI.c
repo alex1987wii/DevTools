@@ -245,6 +245,7 @@ typedef int (*background_func)(void );
 
 static background_func g_background_func = NULL;/*INVOKE by BackGroundThread*/
 //static void *g_background_arg = NULL;
+static TCHAR error_info[256];//storage error information
 
 typedef void (*complete_func)(int retval,void *private_data);
 static complete_func g_complete_func = NULL;/*INVOKE by WM_INVOKE_CALLBACK*/
@@ -952,9 +953,10 @@ static void unregister_notifyer(void)
 static DWORD WINAPI TransferThread(LPVOID lpParam)
 {
 	int retval = 0;
-	unsigned char percent = 0;
-	unsigned short status = 0;
-	unsigned char index = 0;	
+	unsigned char percent = 0,last_percent;
+	unsigned short status = 0,last_status;
+	unsigned char index = 0,last_index;
+	
 	TCHAR text[256];
 	
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
@@ -963,7 +965,13 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	while(1)
 	{
 		Sleep(250);
-		
+		//reset varibles
+		last_percent = percent;
+		last_status = status;
+		last_index = index;
+		percent = 0;
+		status = 0;
+		index = 0;
 		if(g_transfer_complete)
 		{
 			/* if(hwndPop)
@@ -986,35 +994,19 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		}
 		/* if(hwndPop == NULL && status != 0)		
 			SendMessage(hwndMain,WM_CREATE_PROGRESS_BAR,0,0); */
-		switch(status)
+		
+		if(!(last_index == index && last_percent == percent && last_status == status))//stage index or percent changed
 		{
-			case PROGRESS_STATUS_FINISHED:	
-						
-			case PROGRESS_STATUS_PREPARING:
-			if(percent>0 && percent < 100)
+			if(percent != 0)
 			{
 				snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],index < total_partition ? partition_name[index] : "",percent);
-				SetWindowText(hwndInfo,text);
 			}
-			/* if(hwndPop)
-				ShowWindow(hwndPop,FALSE); */
-			break;
-			case PROGRESS_STATUS_FLASHING:
-			case PROGRESS_STATUS_VERIFYING:
-			case PROGRESS_STATUS_EXECUTING:
-			case PROGRESS_STATUS_TRANSFER:
-			snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],index < total_partition ? partition_name[index] : "",percent);
-			SetWindowText(hwndInfo,text);
-			/* if(hwndPop)
+			else
 			{
 				snprintf(text,256,"%s %s",stage[status],index < total_partition ? partition_name[index] : "");
-				ChangeProgressBarText(text);
-				ChangeProgressBar(percent);
-				ShowWindow(hwndPop,TRUE);			
-			}	 */			
-			break;
-		}	
-		
+			}
+			SetWindowText(hwndInfo,text);
+		}		
 	}
 	return retval;
 }
@@ -1039,8 +1031,7 @@ static inline void transfer_complete(void)
  * the important information in g_mi is not changed during updating
  */
 static DWORD WINAPI BackGroundThread(LPVOID lpParam)
-{
-	int retval = -1;
+{	
 	while(1)
 	{
 		WaitForSingleObject(g_event,INFINITE);
@@ -1051,18 +1042,13 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
 			g_locking = TRUE;
             if(g_background_func)
 			{
-				retval = g_background_func();
+				g_retval = g_background_func();
+				PostMessage(hwndMain,WM_INVOKE_CALLBACK,0,0);
 				
-#if 0
-				if(retval != 0)
-					PostMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
-				else
-					PostMessage(hwndMain,WM_STAGE_COMPLETE,0,0);
-#endif
+				g_background_func = NULL;
 			}			
 			g_locking = FALSE;			
-        }	
-		       
+        }		       
 	}	
     return 0;
 }
@@ -1235,7 +1221,7 @@ static void InitLinuxWindow(void)
     printf("hwndLinGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, GBOX1_START_Y, max_Groupbox1_width, max_Groupbox1_height);
 
-    hwndLinGroupReadme = CreateWindow( TEXT ("button"), "Readme",
+    hwndLinGroupReadme = CreateWindow( TEXT ("button"), "Information",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
             GBOX1_START_X, GBOX1_START_Y,
             max_Groupbox1_width, max_Groupbox1_height,
@@ -1507,7 +1493,7 @@ static void InitSPLWindow(void)
     printf("hwndSPLGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, GBOX1_START_Y, max_Groupbox1_width, max_Groupbox1_height);
 
-    hwndSPLGroupReadme = CreateWindow( TEXT ("button"), "Readme",
+    hwndSPLGroupReadme = CreateWindow( TEXT ("button"), "Information",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
             GBOX1_START_X, GBOX1_START_Y,
             max_Groupbox1_width, max_Groupbox1_height,
@@ -1707,7 +1693,7 @@ static void InitMFGWindow(void)
     printf("hwndMFGGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, GBOX1_START_Y, max_Groupbox1_width, max_Groupbox1_height);
 
-    hwndMFGGroupReadme = CreateWindow( TEXT ("button"), "Readme",
+    hwndMFGGroupReadme = CreateWindow( TEXT ("button"), "Information",
             WS_CHILD | WS_VISIBLE  | BS_GROUPBOX,
             GBOX1_START_X, GBOX1_START_Y,
             max_Groupbox1_width, max_Groupbox1_height,
@@ -2646,7 +2632,6 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 #endif
 		g_background_func = linux_download;
 		update_ui_resources(FALSE);
-		
 	}
 	else if(hwnd == hwndBtnEnableTelnet)
 		g_background_func = OnBtnEnableTelnetClick;
@@ -2654,7 +2639,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		g_background_func = OnBtnRefreshClick;
 	else 
 		return FALSE;
-	WAKE_THREAD_UP();	
+	WAKE_THREAD_UP();
 	return TRUE;
 }
 static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
@@ -2746,7 +2731,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 	{		
 		if(g_processing == FALSE)
 		{
-			update_ui_resources(TRUE);		
+			update_ui_resources(TRUE);
 			listening_on = IS_LISTENING_ON_NOTHING;
 			SetWindowText(hwndMFGStaticInfo,"");			
 		}		
@@ -2931,12 +2916,24 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		break;
 		/*just print the error information for errcode*/
 		case WM_ERROR:
-		ERROR_MESSAGE("%s",get_error_info(wParam));
+		if(wParam == -1 && error_info[0] != 0)
+		{
+			SetWindowText(hwndInfo,error_info);
+			ERROR_MESSAGE(error_info);
+		}
+		else
+		{
+			SetWindowText(hwndInfo,get_error_info(wParam));
+			ERROR_MESSAGE("Error code is: %s",get_error_info(wParam));
+		}
 		break;		
 		case WM_INVOKE_CALLBACK:
 		if (g_complete_func)
 		{
 			g_complete_func(g_retval, g_complete_private_data);
+			g_complete_func = NULL;
+			g_retval = 0;
+			g_complete_private_data = NULL;
 		}
 		break;
         default:

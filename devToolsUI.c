@@ -771,9 +771,7 @@ static inline BOOL check_ini(void)
 {
 	/*read the ini file and parse it into struct*/
 	/*linux download don't need a ini file*/
-	#warning "just for convenient"
-	//if(burn_mode == SELECT_LINUX_PROGRAMMING)
-		return TRUE;
+	
 	if(get_file_len(ini_file) <= 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"ini file lost.");
@@ -2142,7 +2140,7 @@ static int linux_download(void)
 			transfer_complete();
 		if(retval != 0)
 		{
-			snprintf(error_info,ERROR_INFO_MAX,"Linux download failed!",);
+			snprintf(error_info,ERROR_INFO_MAX,"Linux download failed!");
 			snprintf(error_msg,ERROR_INFO_MAX,"Linux download failed! Error code is %s.\nPlease try it again.",get_error_info(retval));
 			goto linux_download_error;
 		}	
@@ -2240,14 +2238,13 @@ static int mfg_download(void)
 	transfer_complete();
 	if(retval != 0)
 	{
-		
-		SetWindowText(hwndInfo,"MFG download error.");
-		ERROR_MESSAGE("MFG download error,please try it again.");
+		snprintf(error_info,ERROR_INFO_MAX,"MFG download error.");
+		snprintf(error_msg,ERROR_INFO_MAX,"MFG download error,Error code is %s.\nPlease try it again.",get_error_info(retval));		
 		goto mfg_download_error;
 	}
 		
 	SetDynamicInfo("Waiting for SPL device");
-	Sleep(2000);
+	Sleep(2000);	
 	StopDynamicInfo();
 	
 	SetWindowText(hwndInfo,"Waiting for SPL download..");	
@@ -2327,7 +2324,7 @@ static BOOL OnBtnBrowser(void)
 	if(GetFileName(image,256) == TRUE)
 	{			
 		SetWindowText(hwndStaticBrowser,image);
-		if(get_image_info(image) == FALSE || check_ini() == FALSE)
+		if(get_image_info(image) == FALSE || (burn_mode == SELECT_LINUX_PROGRAMMING && check_ini() == FALSE))
 		{
 			EnableWindow(hwndBtnDown,FALSE);
 			SendMessage(hwndMain,WM_ERROR,-1,0);
@@ -2352,7 +2349,7 @@ static int OnBtnRefreshClick(void)
 {
 	return 0;
 }
-static int OnBtnEnableTelnetClick(void )
+static int OnBtnEnableTelnetClick(void)
 {
 	/*save button LinBtnDown's status*/ 
 	WINDOWINFO info_for_btn_down;
@@ -2600,10 +2597,10 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 {	
 	
 	HWND hwnd = (HWND)lParam;
-	if(g_processing == FALSE)
+	/* if(g_processing == FALSE)
 	{
 		CLEAR_INFO();
-	}
+	} */
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
 	{
@@ -2650,10 +2647,10 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	if(g_processing == FALSE)
+	/* if(g_processing == FALSE)
 	{
 		CLEAR_INFO();
-	}
+	} */
 	if(hwnd == hwndSPLBtnDown)
 	{
 		int i;
@@ -2680,10 +2677,10 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	if(g_processing == FALSE)
+	/* if(g_processing == FALSE)
 	{
 		CLEAR_INFO();
-	}
+	} */
 	if(hwnd == hwndMFGBtnDown)
 	{
 		

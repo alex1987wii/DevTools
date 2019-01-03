@@ -22,7 +22,7 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=G4_BBA
+PROJECT=$(strip REPEATER_BBA)
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA G4_BBA_V2 REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )

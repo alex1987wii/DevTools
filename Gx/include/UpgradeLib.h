@@ -17,10 +17,12 @@ int burnpartition(int parts_selected);
 
 int progress_reply_status_get (char *index, unsigned char *percent, unsigned short *status );
 
+//File operation API
+int download_file(const char *TG_ip, char *read_file_from_pc, char *save_file_to_target);
+int upload_file(const char *TG_ip, char *write_file_to_pc, char *read_file_from_target);
 int exec_file_in_tg(const char *TG_ip, char* filepath);
-
-/*beta*/
 int execute_cmd_in_tg(const char *TG_ip, char *cmd);
+
 #ifdef __cplusplus
 
 }

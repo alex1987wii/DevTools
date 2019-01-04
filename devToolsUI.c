@@ -209,9 +209,9 @@ int partition_y_pos = 0;
 #define IP_MAX			4
 const char *ip_addr[IP_MAX] = {
 	"10.10.0.12",
-	"10.10.11.12",
-	"10.10.12.12",
-	"10.10.13.12"
+	"10.10.12.11",
+	"10.10.12.21",
+	"10.10.12.22"
 };
 
 /*********************Tab Select ID****************************/
@@ -246,7 +246,7 @@ static const char *ini_file = "for_mfg_file.ini";
 static const int burn_mode = SELECT_MFG_PROGRAMMING;
 #endif
 
-#define UNI_APP_MUTEX      "Unxication Dev Tools"
+#define UNI_APP_MUTEX      "Unication Dev Tools"
 typedef int (*background_func)(void );
 
 
@@ -409,8 +409,7 @@ BOOL InitDebugConsole( void )
 	if( !AllocConsole() )
     {      
         return FALSE;
-    }
-    
+    }    
     /* redirect stdout and stdin to console out and console in */
     freopen(TEXT("CONOUT$"),TEXT("w"), stdout);
     freopen(TEXT("CONIN$"), TEXT("r"), stdin);
@@ -630,7 +629,7 @@ static BOOL get_image_info(const char*image)
 	{
 		fclose(fp);
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
-		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:%s",image);
+		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);
 		return FALSE;
 	}
 	fclose(fp);
@@ -642,14 +641,14 @@ static BOOL get_image_info(const char*image)
 	if(strcasecmp(image_type,PROJECT))
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
-		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:%s",image);
+		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);
 		return FALSE;
 	}
 	total_partition = image_header.total_partitions;
 	if(total_partition <= 0 || total_partition > UNI_MAX_PARTITION)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
-		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:%s",image);
+		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);
 		return FALSE;
 	}
 	int i;
@@ -733,6 +732,7 @@ static inline BOOL parse_ip_list(const char *ip_list)
 {
 	char buff[256],*ip;	
 	int ip_cnt = 0;
+	ini_file_info.ip_should_flash = 0;
 	if(strlen(ip_list) > 256)
 		return FALSE;
 	strcpy(buff,ip_list);
@@ -779,14 +779,23 @@ EXIT:
 	iniparser_freedict(ini_config);
 	return FALSE;	
 }
-
+/*Description:
+* 		check if ini file exsit and it's valid for current burn_mode
+* burn_mode = SELECT_LINUX_PROGRAMMING:
+* 			a.if it's for development tools,image key is irrelevant
+* 			b.if it's for maintainment tools,image key is necessary,and image must exsit
+* 			ip key is necessary and rescue_image key is irrelevant for this burn_mode
+* burn_mode = SELECT_SPL_PROGRAMMING:
+* burn_mode = SELECT_MFG_PROGRAMMING:(include development tools and production tools)
+*			ip key and rescue_image key is necessary,rescue_image must exsit,image key is irrelevant(specified by browser)
+*/
 static inline BOOL check_ini(void)
 {
 	/*read the ini file and parse it into struct*/
-	/*only development tool for linux don't need a ini file*/
+	/*if don't need a ini file then return TRUE*/
 	if(ini_file == NULL)
 		return TRUE;
-	if(get_file_len(ini_file) <= 0)
+	if(_access(ini_file,0))
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"ini file lost.");
 		snprintf(error_msg,ERROR_INFO_MAX,"%s lost.",ini_file);
@@ -2226,16 +2235,26 @@ static int linux_download(void)
 		
 		//if(burn_mode == SELECT_LINUX_PROGRAMMING)
 			transfer_complete();
-#ifdef xMAINTAINMENT
-		if(retval == 0xFDBB /*EC_USERDATA_UPGRADE_FAIL*/ && IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to upgrade that will wipe your data?",szAppName,MB_YESNO|MB_ICONWARNING))
+#ifdef MAINTAINMENT
+		if(retval == 0xFDBB)/*EC_USERDATA_UPGRADE_FAIL*/
 		{
-			transfer_start();			
-		#ifdef U3_LIB
-			retval = burnpartition(1<<5);//userdata
-		#else
-			retval = burnpartition(0x03E0);
-		#endif
-			transfer_complete();
+			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe userdata in your device)",szAppName,MB_YESNO|MB_ICONWARNING))
+			{
+				/*Select Yes,force to download by invoke burnpartition*/
+				transfer_start();			
+			#ifdef U3_LIB
+				retval = burnpartition(1<<5);//userdata
+			#else
+				retval = burnpartition(0x03E0);
+			#endif
+				transfer_complete();
+			}
+			else
+			{
+				/*Select No,reboot this cpu,then do next cpu*/
+				RebootTarget(ip);
+				continue;
+			}
 		}
 #endif
 		if(retval != 0)
@@ -2381,7 +2400,10 @@ static void spl_download_complete_cb(int retval,void *private_data)
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
 	else
+	{
+		//snprintf(error_msg+strlen(error_msg),ERROR_INFO_MAX-strlen(error_msg),"Please reset your device and try it again.");
 		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+	}
 	g_processing = FALSE;
 	update_ui_resources(TRUE);
 }
@@ -2451,18 +2473,48 @@ static int OnBtnRefreshClick(void)
 }
 static int OnBtnEnableTelnetClick(void)
 {
-	/*save button LinBtnDown's status*/ 
+#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
+	int ip_count = 4;
+#elif (defined(CONFIG_PROJECT_M2) || defined(CONFIG_PROJECT_REPEATER_BBA))
+	int ip_count = 2;
+#else
+	int ip_count = 1;
+#endif	
+	int error_flag = 0;
+	int i;
+	int retval = -1;
+	/*save button LinBtnDown's status*/
 	WINDOWINFO info_for_btn_down;
 	info_for_btn_down.cbSize = sizeof(WINDOWINFO);
 	GetWindowInfo(hwndLinBtnDown,&info_for_btn_down);
 	update_ui_resources(FALSE);
 	SetDynamicInfo("EnableTelnet");
-	int retval = EnableTelnet("10.10.0.12");
-	StopDynamicInfo();
-	if(retval != 0)
+	//EnableTelnet for all ip
+	for(i = 0; i < ip_count; ++i)
 	{
-		SetWindowText(hwndInfo,"EnableTelnet Failed.");
-		ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
+		retval = EnableTelnet(ip_addr[i]);
+		if(retval != 0)
+			error_flag |= 1<<i;
+	}	
+	StopDynamicInfo();
+	if(error_flag != 0)
+	{
+		/*for example:10.10.0.12 10.10.12.11 success,but 10.10.12.21 10.10.12.22 Failed. it will be output like this
+		* EnableTelnet 10.10.12.21 10.10.12.22 Failed.
+		*/
+		char info[256];
+		strcpy(info,"EnableTelnet ");
+		for(i = 0; i < ip_count; ++i)
+		{			
+			if(error_flag & (1<<i))
+			{
+				strcpy(info,ip_addr[i]);
+				strcpy(info," ");
+			}
+		}
+		strcpy(info,"Failed.");
+		SetWindowText(hwndInfo,info);
+		//ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
 	}
 	else
 		SetWindowText(hwndInfo,"EnableTelnet Success.");
@@ -2709,8 +2761,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 			SetWindowText(hwndLinBtnDown,TEXT("Upgrade"));
 		return TRUE;
 	}
-#endif
-	/*Linux download have no ini file*/
+#endif	
 	if(hwnd == hwndLinBtnBrowser)
 	{
 		return OnBtnBrowser();		
@@ -2974,7 +3025,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
 				listening_on == IS_LISTENING_ON_SPL )
 				{
-					//spl device insert
+					//spl device insert					
 					StopDynamicInfo();
 					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = spl_download;
@@ -2995,7 +3046,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 				}
 				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
 				{
-					//lan device insert			
+					//lan device insert	
+					
 				}
 			}				
 		}
@@ -3250,7 +3302,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	
 	/*check if ap's directory exsit*/
 
-#ifdef xMAINTAINMENT
+#ifdef MAINTAINMENT
 	if(_access("DLL",0))
 	{
 		MessageBox(NULL,TEXT("DLL lost"),szAppName,MB_ICONERROR);

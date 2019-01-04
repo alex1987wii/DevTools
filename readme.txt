@@ -1,12 +1,12 @@
-开发工具操作流程
-1.将相关系统镜像拷贝至程序所在目录
-2.修改配置文件
-3.选择烧录方式进行烧录
+烧录工具操作流程
+1.修改配置文件
+2.选择烧录方式进行烧录
 说明：
 1. linux烧录必须在target上有系统运行时才可使用
-2. spl烧录和mfg烧录需要先将工具设定好后点击download，会出现waiting for SPL/MFG device.. 的提示，然后按照特定操作步骤使得设备进入指定模式，并使用USB连接到PC，此时程序检测到对应设备的插入会自动进行烧录操作。
+2. 对于开发工具和生产工具，以浏览文件的方式指定image所在路径，对于用户工具，image由配置文件指定。
+3. spl烧录和mfg烧录在设定完成后点击download按钮，会出现waiting for SPL/MFG device.. 的提示，然后按照特定操作步骤使得设备进入指定模式，并使用USB连接到PC，此时程序检测到对应设备的插入会自动进行烧录操作。
 3. 多CPU烧录仅能在linux烧录中使用，ip配置规则参考 4.
 4. linux烧录使用的配置文件为for_user_file.ini，spl和mfg烧录使用的配置文件是for_mfg_file.ini，其格式为标准ini格式，但由于业务逻辑确定，对ini的字段进行了一些限制：
-文件必须要有Options这个section,而且该section下必须要有ip字段和image字段,rescue_image为可选字段，对于for_mfg_file.ini而言，rescue_image为必选字段，若缺失会在点击checkimg时报错。
-多CPU烧录指的是多个CPU使用同一配置进行烧录，需要每个CPU都有可运行linux系统且主CPU为必选。其中主IP在前，次IP在后。
+文件必须要有Options这个section,而且该section下必须要有ip字段,image字段和rescue_image为可选字段，对于for_mfg_file.ini而言，rescue_image为必选字段，对于开发工具，image字段以浏览文件的地址为准，Maintainment工具则使用for_user_file.ini里的image字段指定地址进行(一般为当前工作目录)。若缺失会报错。
+多CPU烧录指的是多个CPU使用同一配置进行烧录，需要每个CPU都有可运行linux系统。
 对没有系统的多CPU设备，必须要对每个CPU单独进行MFG烧录

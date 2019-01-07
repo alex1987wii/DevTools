@@ -2204,14 +2204,14 @@ static int linux_download(void)
 	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
 	{		
 		ip = ini_file_info.ip[i];
-#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND) || defined(CONFIG_PROJECT_M2) || defined(CONFIG_PROJECT_REPEATER_BBA))
+#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND) || defined(CONFIG_PROJECT_REPEATER_BBA))
 		snprintf(ip_info,256,"Ip : %s",ip);
 		printf("ip_info = %s\n",ip_info);
 		SetWindowText(hwndIpInfo,ip_info);		
 #endif
 		SetDynamicInfo("Linux init");
 		BOOL ret = linux_init(ip);
-		StopDynamicInfo();		
+		StopDynamicInfo();	
 		if(FALSE == ret)
 		{			
 			goto linux_download_error;
@@ -2475,7 +2475,7 @@ static int OnBtnEnableTelnetClick(void)
 {
 #if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
 	int ip_count = 4;
-#elif (defined(CONFIG_PROJECT_M2) || defined(CONFIG_PROJECT_REPEATER_BBA))
+#elif defined(CONFIG_PROJECT_REPEATER_BBA)
 	int ip_count = 2;
 #else
 	int ip_count = 1;
@@ -2508,11 +2508,11 @@ static int OnBtnEnableTelnetClick(void)
 		{			
 			if(error_flag & (1<<i))
 			{
-				strcpy(info,ip_addr[i]);
-				strcpy(info," ");
+				strcat(info,ip_addr[i]);
+				strcat(info," ");
 			}
 		}
-		strcpy(info,"Failed.");
+		strcat(info,"Failed.");
 		SetWindowText(hwndInfo,info);
 		//ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
 	}

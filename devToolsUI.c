@@ -1337,7 +1337,7 @@ static void InitLinuxWindow(void)
     relative_x += H_GAPS * 2;
     relative_y += V_GAPS + HEIGHT_TAG;
 #ifdef MAINTAINMENT
-	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade/Download Button and wait until it finished.\n3. If any error occurs during updating/downloading,please reconnect device and reopen this tool to try it again.\n4.Don't pull off the USB cable during process.");
+	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade/Download Button and wait until it finished.\n3. If any error occurs during updating/downloading,please reconnect device and re-open this tool to try it again.\n4.Don't pull off the USB cable during process.");
 #else
 	readme = project_target;
 #endif
@@ -2260,7 +2260,7 @@ static int linux_download(void)
 		if(retval != 0)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"Linux download failed!");
-			snprintf(error_msg,ERROR_INFO_MAX,"Linux download failed! Error code is %s.\nPlease try it again.",get_error_info(retval));
+			snprintf(error_msg,ERROR_INFO_MAX,"Linux download failed! Error code is %s.",get_error_info(retval));
 			goto linux_download_error;
 		}	
 	}
@@ -2303,8 +2303,8 @@ static int spl_download(void)
 	transfer_complete();
 	if(retval != 0)
 	{		
-		strncpy(error_info,"SPL download error.",ERROR_INFO_MAX);		
-		strncpy(error_msg,"SPL download error.",ERROR_INFO_MAX);
+		snprintf(error_info,ERROR_INFO_MAX,"SPL download error.");		
+		snprintf(error_msg,ERROR_INFO_MAX,"SPL download error,Error code is %s.",get_error_info(retval));
 		goto spl_download_error;
 	}
 	retval = linux_download();	
@@ -2358,7 +2358,7 @@ static int mfg_download(void)
 	if(retval != 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"MFG download error.");
-		snprintf(error_msg,ERROR_INFO_MAX,"MFG download error,Error code is %s.\nPlease try it again.",get_error_info(retval));		
+		snprintf(error_msg,ERROR_INFO_MAX,"MFG download error,Error code is %s.",get_error_info(retval));		
 		goto mfg_download_error;
 	}
 		

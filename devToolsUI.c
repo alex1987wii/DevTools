@@ -276,6 +276,7 @@ static char work_path[MAX_PATH];/*the path for this program*/
 
 
 static HANDLE g_event = NULL;    // event
+static HANDLE g_hBackGround = NULL;
 static HANDLE g_hTransfer = NULL;
 
 TCHAR szAppName[] = TEXT(APP_TITLE);
@@ -1116,8 +1117,8 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
 
 static BOOL StartThread(void)
 {
-    g_hTransfer = CreateThread(NULL, 0, BackGroundThread, NULL, 0, NULL);
-    if (g_hTransfer == NULL)
+    g_hBackGround = CreateThread(NULL, 0, BackGroundThread, NULL, 0, NULL);
+    if (g_hBackGround == NULL)
     {
         ERROR_MESSAGE("create BackGroundThread error\n");
         return FALSE;

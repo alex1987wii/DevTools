@@ -684,6 +684,20 @@ static inline int get_abs_file_name(char *dest,const char *src)
 	
 	return TRUE;
 }
+/*just replace all '\' to '/' */
+static inline char *dir_win32_to_linux(char *dir)
+{
+	static char linux_dir[256];
+	strncpy(linux_dir,dir,256);
+	dir = linux_dir;
+	while(*dir)
+	{
+		if(*dir == '\\')
+			*dir = '/';
+		++dir;
+	}
+	return linux_dir;	
+}
 static inline int get_file_len(const char *file)
 {
 	int retval = -1;
@@ -2174,6 +2188,7 @@ static BOOL linux_init(const char *ip)
 #else
 	GetWindowText(hwndStaticBrowser,image,256);
 #endif
+	
 	image_length = get_file_len(image);
 	if(image_length <= 0)
 	{		
@@ -2184,7 +2199,7 @@ static BOOL linux_init(const char *ip)
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
 	retval = WinUpgradeLibInit(image,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
-
+	
 	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",image,image_length,ip);
 	if(retval != 0)
 	{
@@ -2300,7 +2315,7 @@ static int spl_download(void)
 		transfer_start();
 	
 	retval = burnSPL(ini_file_info.name_of_rescue_image);
-
+	
 	transfer_complete();
 	if(retval != 0)
 	{		
@@ -2330,7 +2345,9 @@ static BOOL mfg_init(void)
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		return FALSE;
 	}
-	retval = burnMFGinit(image);		
+	
+	retval = burnMFGinit(image);
+
 	if(retval != 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"MFG init error");

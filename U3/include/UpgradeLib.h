@@ -32,7 +32,7 @@ int file_upload(const char *TG_ip, char *write_file_to_pc, char *read_file_from_
 int file_download(const char *TG_ip, char *read_file_from_pc, const char *save_file_to_target);
 int exec_file_in_tg(const char *TG_ip, const char *special_file);
 
-/*beta*/
+/* execute shell command in target. please DO NOT contain special character as /0 in the middle of command*/
 int execute_cmd_in_tg(const char *TG_ip, char *cmd);
 #ifdef __cplusplus
 }

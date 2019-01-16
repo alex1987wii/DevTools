@@ -2223,7 +2223,7 @@ static int linux_download(void)
 #if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND) || defined(CONFIG_PROJECT_REPEATER_BBA))
 		snprintf(ip_info,256,"Ip : %s",ip);
 		printf("ip_info = %s\n",ip_info);
-		SetWindowText(hwndIpInfo,ip_info);		
+		SetWindowText(hwndIpInfo,ip_info);
 #endif
 		SetDynamicInfo("Linux init");
 		BOOL ret = linux_init(ip);
@@ -2231,9 +2231,9 @@ static int linux_download(void)
 		if(FALSE == ret)
 		{			
 			goto linux_download_error;
-		}		
-		//if(burn_mode == SELECT_LINUX_PROGRAMMING)
-			transfer_start();/*start a progress thread*/	
+		}
+		
+		transfer_start();/*start a progress thread*/	
 		
 #ifdef DEVELOPMENT
 		printf("partition_selected = 0x%04x\n",partition_selected);
@@ -2247,10 +2247,10 @@ static int linux_download(void)
 #elif defined(PRODUCTION)
 		/*burn all partition*/
 		retval = burnpartition(((1<<total_partition)-1)/*&~(1<<3)*/);
-#endif
+#endif		
 		
-		//if(burn_mode == SELECT_LINUX_PROGRAMMING)
-			transfer_complete();
+		transfer_complete();
+		
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB)/*EC_USERDATA_UPGRADE_FAIL*/
 		{
@@ -2307,16 +2307,17 @@ static int spl_download(void)
 	BOOL ret = spl_init();
 	StopDynamicInfo();
 	if(FALSE == ret)
-	{	
+	{
 		goto spl_download_error;
 	}
 	SetWindowText(hwndInfo,"Waiting for SPL download..");
-	//if(burn_mode == SELECT_SPL_PROGRAMMING)
-		transfer_start();
+	
+	transfer_start();
 	
 	retval = burnSPL(ini_file_info.name_of_rescue_image);
 	
 	transfer_complete();
+	
 	if(retval != 0)
 	{		
 		snprintf(error_info,ERROR_INFO_MAX,"SPL download error.");		
@@ -2485,7 +2486,7 @@ static BOOL OnBtnBrowser(void)
 	return TRUE;
 }
 
-static int OnBtnRefreshClick(void)
+static int OnBtnRefreshClick(void)//unused
 {
 	return 0;
 }
@@ -2981,6 +2982,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			break;
 		}
         return TRUE;
+		case WM_CLOSE:
+		return (g_processing == TRUE) ? 0 : DefWindowProc(hwnd, message, wParam, lParam);
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)
             {

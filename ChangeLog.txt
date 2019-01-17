@@ -1,2 +1,4 @@
-1.modified "Readme" to "Information"
+1. fix m2 enableTelnet issue
+2. fix a issure that probably caused the first crash after download
+3. forbidden to close UI when processing
 

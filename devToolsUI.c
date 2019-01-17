@@ -2807,6 +2807,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		}
 		g_background_func = linux_download;
 		g_complete_func = linux_download_complete_cb;
+		g_processing = TRUE;
 		update_ui_resources(FALSE);
 	}
 	else if(hwnd == hwndBtnEnableTelnet)
@@ -3051,8 +3052,9 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = spl_download;
 					g_complete_func = spl_download_complete_cb;
-					WAKE_THREAD_UP();
 					g_processing = TRUE;
+					WAKE_THREAD_UP();
+					
 				}
 				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)) &&
 				listening_on == IS_LISTENING_ON_MFG)
@@ -3062,8 +3064,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = mfg_download;
 					g_complete_func = mfg_download_complete_cb;
-					WAKE_THREAD_UP();
 					g_processing = TRUE;
+					WAKE_THREAD_UP();					
 				}
 				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
 				{

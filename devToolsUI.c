@@ -185,8 +185,9 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define PROJECT			"AD6900_BBA"
 #elif defined CONFIG_PROJECT_BR01
 #define PROJECT			"BR01"
-
-#elif (defined(CONFIG_PROJECT_U4)|| defined(CONFIG_PROJECT_U4_BBA))
+#elif defined(CONFIG_PROJECT_U4)
+#define PROJECT			"U4"
+#elif defined(CONFIG_PROJECT_U4_BBA)
 #define PROJECT			"U4_BBA"
 #elif defined CONFIG_PROJECT_REPEATER_BBA
 #define PROJECT			"REPEATER_BBA"
@@ -636,7 +637,13 @@ static BOOL get_image_info(const char*image)
 	/*make some check if it's valid image,the init function in libupgrade will do that,but i want get partition info first*/
 	memcpy(image_type,image_header.release_version,UNI_MAX_REL_VERSION_LEN);
 	strtok(image_type,";");
-	if(strcasecmp(image_type,PROJECT))
+	if(
+#ifdef CONFIG_PROJECT_U4
+	strcasecmp(image_type,"u4_bba")
+#else
+	strcasecmp(image_type,PROJECT)
+#endif
+	)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
 		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:\n%s",image);

@@ -62,7 +62,8 @@ DEPS = devToolsRes.h
 all: clean ./lib/libiniparser.a $(TARGETS) install
 
 ./lib/libiniparser.a:./src/dictionary.o ./src/iniparser.o
-	$(AR) rcs $@ $^
+	[ -d "lib" ] || mkdir lib
+	$(AR) rcs -o $@ $^
 ./src/iniparser.o:./src/iniparser.c
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
 ./src/dictionary.o:./src/dictionary.c

@@ -67,8 +67,14 @@
  *  Macro definitions
  *  ===========================================================================
  */
-#define ENABLE_DEBUG
-#ifdef ENABLE_DEBUG
+#define DEBUG_NONE			0
+#define DEBUG_CONSOLE		1
+#define DEBUG_LOG			2
+
+#define DEBUG_MODE			DEBUG_LOG	//fixme if you want change the debug mode
+#define LOGFILE				"devTool.log"
+
+#if (DEBUG_MODE == DEBUG_CONSOLE || DEBUG_LOG == DEBUG_MODE)
 #define UI_DEBUG(fmt,args...)			do{\
 TCHAR buff[1024];\
 snprintf(buff,1024,TEXT("%s:%s:%d:")fmt,__FILE__,__func__,__LINE__,##args);\
@@ -390,7 +396,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
  */
 #define CHECKBOX_IS_CLICK(x)  (Button_GetCheck(x) == BST_CHECKED)
 
-#ifdef ENABLE_DEBUG
+#if (DEBUG_MODE == DEBUG_CONSOLE)
 /*
  *  Name:     InitDebugConsole
  *
@@ -430,6 +436,18 @@ BOOL InitDebugConsole( void )
 void ExitDebugConsole( void )
 {
 	FreeConsole();
+	return;
+}
+#elif (DEBUG_MODE == DEBUG_LOG)
+BOOL InitDebugConsole( void )
+{   
+	FILE *fp = freopen(TEXT(LOGFILE),TEXT("w"), stdout);
+	if(fp)
+		setvbuf(fp,NULL,_IOLBF,0);
+    return TRUE;
+}
+void ExitDebugConsole( void )
+{	
 	return;
 }
 
@@ -632,6 +650,7 @@ static BOOL get_image_info(const char*image)
 		return FALSE;
 	}
 	fclose(fp);
+	#warning "flag"
 	printf("image_header.image_version = %s\n",image_header.image_version);
 	printf("image_header.release_version = %s\n",image_header.release_version);
 	/*make some check if it's valid image,the init function in libupgrade will do that,but i want get partition info first*/
@@ -877,7 +896,7 @@ static inline BOOL check_ini(void)
 		}
 		break;
 	}
-#ifdef ENABLE_DEBUG
+	#warning "flag2"
 	printf("ini_file = %s\n",ini_file);
 	printf("ip_should_flash = %d\n",ini_file_info.ip_should_flash);
 	int i;
@@ -886,7 +905,7 @@ static inline BOOL check_ini(void)
 		printf("ip = %s\n",ini_file_info.ip[i]);
 	}	
 	printf("rescue_image = %s\n",ini_file_info.name_of_rescue_image);
-#endif
+
 	return TRUE;
 }
 static void ChangeProgressBar(int percent)
@@ -1045,7 +1064,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 	TCHAR text[256];
 	
 	char *stage[MAX_STATUS] = {"Preparing","Flashing","Verifying","Executing","Finished","Transfer"};
-		
+	printf("%s start\n",__func__);	
 	while(1)
 	{
 		Sleep(250);
@@ -1057,15 +1076,13 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		status = 0;
 		index = 0;
 		if(g_transfer_complete)
-		{			
+		{
+			printf("%s quit\n",__func__);
 			break;
 		}
 		
 		retval = progress_reply_status_get(&index,&percent,&status);
-#ifdef ENABLE_DEBUG
-		printf("retval = %d, status = %d, index = %02x, percent = %d\n",
-		retval,status,index,percent);
-#endif
+
 		if(retval != 0)
 		{
 			printf("progress_reply_status_get return errcode:%s\n",get_error_info(retval));
@@ -2183,8 +2200,7 @@ static void PopProgressBar( void )
 }
 
 static BOOL linux_init(const char *ip)
-{
-	printf("linux_init..\n");
+{	
 	int retval = -1;
 	char image[256];
 #ifdef MAINTAINMENT	
@@ -2205,9 +2221,10 @@ static BOOL linux_init(const char *ip)
 	int battery_check_sign = 0;
 	if(burn_mode == SELECT_LINUX_PROGRAMMING)
 		battery_check_sign = Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1;
+	printf("WinUpgradeLibInit() : image = %s,image_length = %d,ip = %s,battery_check_sign = %d.\n",
+		image,image_length,ip,battery_check_sign);
 	retval = WinUpgradeLibInit(image,image_length,ip,battery_check_sign);
-	
-	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",image,image_length,ip);
+		
 	if(retval != 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Linux init error.");
@@ -2223,7 +2240,7 @@ static int linux_download(void)
 	const char *ip;
 	int i;
 	char ip_info[256];
-	
+	printf("linux_download() called.\n");
 	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
 	{		
 		ip = ini_file_info.ip[i];
@@ -2243,9 +2260,10 @@ static int linux_download(void)
 		transfer_start();/*start a progress thread*/	
 		
 #ifdef DEVELOPMENT
-		printf("partition_selected = 0x%04x\n",partition_selected);
+		printf("burnpartition() : partition_selected = 0x%04x\n",partition_selected);
 		retval = burnpartition(partition_selected);
 #elif defined(MAINTAINMENT)
+		printf("burnImage() called.\n"); 
 		retval = burnImage();
 #if 0	
 		if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
@@ -2253,6 +2271,7 @@ static int linux_download(void)
 #endif
 #elif defined(PRODUCTION)
 		/*burn all partition*/
+		printf("burnpartition() : partition_selected = all partition.\n");
 		retval = burnpartition(((1<<total_partition)-1)/*&~(1<<3)*/);
 #endif		
 		
@@ -2261,19 +2280,24 @@ static int linux_download(void)
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB)/*EC_USERDATA_UPGRADE_FAIL*/
 		{
+			
 			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe userdata of your device)",szAppName,MB_YESNO|MB_ICONWARNING))
 			{
+				printf("error code EC_USERDATA_UPGRADE_FAIL catched,user select YES.\n");
 				/*Select Yes,force to download by invoke burnpartition*/
 				transfer_start();			
 			#ifdef U3_LIB
+				printf("burnpartition() : partition_selected = %04x(userdata).\n",1<<5);
 				retval = burnpartition(1<<5);//userdata
 			#else
+				printf("burnpartition() : partition_selected = %04x.\n",0x03E0);
 				retval = burnpartition(0x03E0);
 			#endif
 				transfer_complete();
 			}
 			else
 			{
+				printf("error code EC_USERDATA_UPGRADE_FAIL catched,user select NO.\n");
 				/*Select No,reboot this cpu,then do next cpu*/
 				RebootTarget(ip);
 				continue;
@@ -2296,7 +2320,6 @@ linux_download_error:
 
 static BOOL spl_init(void)
 {	
-	printf("spl_init..\n");	
 	image_length = get_file_len(ini_file_info.name_of_rescue_image);
 	if(image_length <= 0)
 	{
@@ -2309,7 +2332,7 @@ static BOOL spl_init(void)
 static int spl_download(void)
 {
 	int retval = -1;	
-	printf("spl_download..\n");
+	printf("spl_download() called.\n");
 	
 	SetDynamicInfo("SPL init");
 	BOOL ret = spl_init();
@@ -2319,6 +2342,8 @@ static int spl_download(void)
 		goto spl_download_error;
 	}
 	SetWindowText(hwndInfo,"Waiting for SPL download..");
+	
+	printf("burnSPL() : rescue_image = %s.\n",ini_file_info.name_of_rescue_image);
 	
 	transfer_start();
 	
@@ -2342,8 +2367,7 @@ spl_download_error:
 static BOOL mfg_init(void)
 {
 	int retval = -1;
-	char image[256];
-	printf("mfg_init..\n");
+	char image[256];	
 	
 	GetWindowText(hwndStaticBrowser,image,256);
 	
@@ -2354,7 +2378,7 @@ static BOOL mfg_init(void)
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		return FALSE;
 	}
-	
+	printf("burnMFGinit() : rescue_image = %s\n",image);
 	retval = burnMFGinit(image);
 
 	if(retval != 0)
@@ -2368,7 +2392,7 @@ static BOOL mfg_init(void)
 static int mfg_download(void)
 {	
 	int retval = -1;
-	printf("mfg_download..\n");
+	printf("mfg_download() called.\n");
 
 	SetDynamicInfo("MFG init");
 	BOOL ret = mfg_init();
@@ -2378,10 +2402,11 @@ static int mfg_download(void)
 		goto mfg_download_error;
 	}
 	SetWindowText(hwndInfo,"Waiting for MFG download..");
-	//if(burn_mode == SELECT_MFG_PROGRAMMING)
-		transfer_start();
+	printf("invoke burnMFG.\n");
+	transfer_start();
 	retval = burnMFG();
 	transfer_complete();
+	
 	if(retval != 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"MFG download error.");
@@ -2410,6 +2435,7 @@ static void linux_download_complete_cb(int retval,void *private_data)
 {
 	if(retval == 0)
 	{
+		printf("linux download success.\n");
 		SetWindowText(hwndInfo,"Complete");
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
@@ -2423,6 +2449,7 @@ static void spl_download_complete_cb(int retval,void *private_data)
 {
 	if(retval == 0)
 	{
+		printf("spl download success.\n");
 		SetWindowText(hwndInfo,"Complete");
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
@@ -2438,6 +2465,7 @@ static void mfg_download_complete_cb(int retval,void *private_data)
 {
 	if(retval == 0)
 	{
+		printf("mfg download success.\n");
 		SetWindowText(hwndInfo,"Complete");
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
@@ -2515,6 +2543,7 @@ static int OnBtnEnableTelnetClick(void)
 	info_for_btn_down.cbSize = sizeof(WINDOWINFO);
 	GetWindowInfo(hwndLinBtnDown,&info_for_btn_down);
 	update_ui_resources(FALSE);
+	printf("ip_count = %d\n",ip_count);
 	SetDynamicInfo("EnableTelnet");
 	//EnableTelnet for all ip
 	for(i = 0; i < ip_count; ++i)
@@ -2541,10 +2570,14 @@ static int OnBtnEnableTelnetClick(void)
 		}
 		strcat(info,"Failed.");
 		SetWindowText(hwndInfo,info);
+		printf("%s\n",info);
 		//ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
 	}
 	else
+	{
+		printf("EnableTelnet Success.\n");
 		SetWindowText(hwndInfo,"EnableTelnet Success.");
+	}
 	update_ui_resources(TRUE);
 	/*restore LinBtnDown's status*/
 	EnableWindow(hwndLinBtnDown,!(info_for_btn_down.dwStyle & WS_DISABLED));
@@ -2779,6 +2812,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	{
 		CLEAR_INFO();
 	} */
+
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
 	{
@@ -2791,9 +2825,11 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 #endif	
 	if(hwnd == hwndLinBtnBrowser)
 	{
+		printf("\nbutton LinBtnBrowser clicked.\n");
 		return OnBtnBrowser();		
 	}
 	else if(hwnd == hwndLinBtnDown){
+		printf("\nbutton LinBtnDown clicked.\n");
 #ifndef MAINTAINMENT
 		int i;
 		partition_selected = 0;
@@ -2817,11 +2853,18 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		g_complete_func = linux_download_complete_cb;
 		g_processing = TRUE;
 		update_ui_resources(FALSE);
+		
 	}
 	else if(hwnd == hwndBtnEnableTelnet)
+	{
+		printf("\nbutton BtnEnableTelnet clicked.\n");
 		g_background_func = OnBtnEnableTelnetClick;
+	}
 	else if(hwnd == hwndLinBtnRefresh)
+	{
+		printf("\nbutton LinBtnRefresh clicked.\n");
 		g_background_func = OnBtnRefreshClick;
+	}
 	else 
 		return FALSE;
 	WAKE_THREAD_UP();
@@ -2834,9 +2877,11 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 	{
 		CLEAR_INFO();
 	} */
+	printf("\n");
 	if(hwnd == hwndSPLBtnDown)
 	{
 		int i;
+		printf("\nbutton SPLBtnDown clicked.\n");
 		partition_selected = 0;
 		for(i = 0; i < total_partition;++i)
 		{
@@ -2858,6 +2903,7 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 	}
 	else if(hwnd == hwndSPLBtnBrowser)
 	{
+		printf("\nbutton SPLBtnBrowser clicked.\n");
 		return OnBtnBrowser();
 	}
 	return TRUE;
@@ -2869,11 +2915,12 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 	{
 		CLEAR_INFO();
 	} */
+	
 	if(hwnd == hwndMFGBtnDown)
 	{
-		
+		printf("\nbutton MFGBtnDown clicked.\n");
 #ifdef DEVELOPMENT
-		int i;
+		int i;		
 		partition_selected = 0;
 		for(i = 0; i < total_partition;++i)
 		{
@@ -2899,6 +2946,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 			g_on_batch = FALSE;
 		listening_on = IS_LISTENING_ON_MFG;
 		SetDynamicInfo("Waiting for MFG device");
+		
 #ifdef PRODUCTION
 		ShowWindow(hwndMFGBtnDown,FALSE);		
 		EnableWindow(hwndMFGBtnStop,TRUE);
@@ -2907,10 +2955,12 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 	}
 	else if(hwnd == hwndMFGBtnBrowser)
 	{
-		return OnBtnBrowser();		
+		printf("\nbutton MFGBtnBrowser clicked.\n");
+		return OnBtnBrowser();
 	}
 	else if(hwnd == hwndMFGBtnStop)
-	{		
+	{
+		printf("\nbutton MFGBtnStop clicked.\n");			
 		if(g_processing == FALSE)
 		{
 			update_ui_resources(TRUE);
@@ -2920,7 +2970,8 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		}		
 		g_on_batch = FALSE;
 		ShowWindow(hwndMFGBtnDown,TRUE);
-		ShowWindow(hwndMFGBtnStop,FALSE);		
+		ShowWindow(hwndMFGBtnStop,FALSE);
+			
 	}
 	return TRUE;
 }
@@ -3008,8 +3059,9 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndLinPage,FALSE);
 						ShowWindow(hwndFileTransferPage,FALSE);
 						ini_file = "for_mfg_file.ini";
-						reset_general_handler(SELECT_MFG_PROGRAMMING);
+						reset_general_handler(SELECT_MFG_PROGRAMMING);						
 						break;
+						
 						case SELECT_SPL_PROGRAMMING:
 						ShowWindow(hwndMFGPage,FALSE);
 						ShowWindow(hwndSPLPage,TRUE);
@@ -3018,6 +3070,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ini_file = "for_mfg_file.ini";
 						reset_general_handler(SELECT_SPL_PROGRAMMING);
 						break;
+						
 						case SELECT_LINUX_PROGRAMMING:
 						ShowWindow(hwndMFGPage,FALSE);
 						ShowWindow(hwndSPLPage,FALSE);
@@ -3038,7 +3091,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						hwndProcessInfo = NULL;
 						break;
 					}						
-                    
+                    printf("burn mode switch to %d\n",burn_mode);
                     return TRUE;
 #endif
                 default:
@@ -3055,12 +3108,13 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
 				listening_on == IS_LISTENING_ON_SPL )
 				{
-					//spl device insert					
+					//spl device insert			
 					StopDynamicInfo();
 					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = spl_download;
 					g_complete_func = spl_download_complete_cb;
 					g_processing = TRUE;
+					printf("SPL device inserted.\n");
 					WAKE_THREAD_UP();
 					
 				}
@@ -3073,6 +3127,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					g_background_func = mfg_download;
 					g_complete_func = mfg_download_complete_cb;
 					g_processing = TRUE;
+					printf("mfg device inserted.\n");
 					WAKE_THREAD_UP();					
 				}
 				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
@@ -3084,9 +3139,11 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		}
 		break;
 		case WM_CREATE_PARTITION_LIST:
+		printf("create partition list.\n");
 		CreatePartitionList();
 		break;
 		case WM_DESTROY_PARTITION_LIST:
+		printf("destory partition list.\n");
 		DestoryPartitionList();
 		break;
 		case WM_CREATE_PROGRESS_BAR:
@@ -3102,9 +3159,15 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			snprintf(error_msg+strlen(error_msg),ERROR_INFO_MAX-strlen(error_msg)," Error code is: %s",get_error_info(wParam));
 		}		
 		if(error_info[0] != 0)
+		{
+			printf("error_info = %s\n",error_info);
 			SetWindowText(hwndInfo,error_info);
+		}
 		if(error_msg[0] != 0)
+		{
+			printf("error_msg = %s\n",error_msg);
 			ERROR_MESSAGE(error_msg);
+		}
 		error_info[0] = 0;
 		error_msg[0] = 0;
 		break;		
@@ -3394,6 +3457,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	InitMFGWindow();
 	reset_general_handler(SELECT_MFG_PROGRAMMING);
 #endif	
+	printf("\n");
+	
     register_notifyer();
 
     /* Show the window and send a WM_PAINT message to the window procedure */

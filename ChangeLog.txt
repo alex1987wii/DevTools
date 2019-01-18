@@ -1,4 +1,10 @@
 1. fix m2 enableTelnet issue
 2. fix a issure that probably caused the first crash after download
 3. forbidden to close UI when processing
-
+4. add ui log file,log file print these information
+	a. ui controller postion
+	b. record input button click event
+	c. record device insert event
+	d. record interface argment before invoke
+	e. record result after download
+	f. dump gloab varibles

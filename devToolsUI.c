@@ -173,11 +173,9 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #elif defined(CONFIG_PROJECT_U3_2ND)
 #define PROJECT			"U3_2ND"
 #define U3_LIB
-#elif defined CONFIG_PROJECT_U4
-#define PROJECT			"U4"
 #elif defined CONFIG_PROJECT_U5
 #define PROJECT			"U5"
-#elif defined CONFIG_PROJECT_G4_BBA
+#elif (defined(CONFIG_PROJECT_G4_BBA) || defined(CONFIG_PROJECT_G4_BBA_V2))
 #define PROJECT			"G4_BBA"
 #elif defined CONFIG_PROJECT_BR01_2ND
 #define PROJECT			"BR01_2ND"
@@ -187,9 +185,8 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define PROJECT			"AD6900_BBA"
 #elif defined CONFIG_PROJECT_BR01
 #define PROJECT			"BR01"
-#elif defined CONFIG_PROJECT_G4_BBA_V2
-#define PROJECT			"G4_BBA_V2"
-#elif defined CONFIG_PROJECT_U4_BBA
+
+#elif (defined(CONFIG_PROJECT_U4)|| defined(CONFIG_PROJECT_U4_BBA))
 #define PROJECT			"U4_BBA"
 #elif defined CONFIG_PROJECT_REPEATER_BBA
 #define PROJECT			"REPEATER_BBA"
@@ -2198,7 +2195,10 @@ static BOOL linux_init(const char *ip)
 	}	
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
-	retval = WinUpgradeLibInit(image,image_length,ip,Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1);
+	int battery_check_sign = 0;
+	if(burn_mode == SELECT_LINUX_PROGRAMMING)
+		battery_check_sign = Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1;
+	retval = WinUpgradeLibInit(image,image_length,ip,battery_check_sign);
 	
 	printf("name_of_image = %s\nimage_len = %d\nip = %s\n",image,image_length,ip);
 	if(retval != 0)
@@ -2254,7 +2254,7 @@ static int linux_download(void)
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB)/*EC_USERDATA_UPGRADE_FAIL*/
 		{
-			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe userdata in your device)",szAppName,MB_YESNO|MB_ICONWARNING))
+			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe userdata of your device)",szAppName,MB_YESNO|MB_ICONWARNING))
 			{
 				/*Select Yes,force to download by invoke burnpartition*/
 				transfer_start();			
@@ -2272,6 +2272,7 @@ static int linux_download(void)
 				continue;
 			}
 		}
+		
 #endif
 		if(retval != 0)
 		{

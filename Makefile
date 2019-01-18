@@ -106,12 +106,15 @@ prepare_dir:
 	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))
 
 install:prepare_dir
-	cp -rf for_user_file.ini for_mfg_file.ini readme.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf readme_for_development.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/readme.txt
+	cp -rf for_user_file.ini for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf $(TARGET_DEV) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf readme_for_maintainment.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/readme.txt
 	cp -rf for_user_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(TARGET_MAINTAIN)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf readme_for_production.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
 	cp -rf for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(TARGET_PRODUCTION)  $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/

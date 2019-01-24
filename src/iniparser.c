@@ -64,7 +64,7 @@ static const char * strlwc(const char * in, char *out, unsigned len)
   Original strdup is not portable, need to implement our own
  */
 /*--------------------------------------------------------------------------*/
-static char * _strdup(const char *s)
+static char * str_dup(const char *s)
 {
     char * copy = (char*) malloc(strlen(s)+1);
     strcpy(copy, s);
@@ -560,7 +560,7 @@ static line_status iniparser_line(
     char * line = NULL;
     size_t      len ;
 
-    line = _strdup(input_line);
+    line = str_dup(input_line);
     len = strstrip(line);
 
     sta = LINE_UNPROCESSED ;

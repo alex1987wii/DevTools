@@ -22,8 +22,8 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=$(strip REPEATER_BBA)
-valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA G4_BBA_V2 REPEATER_BBA M2 BR01 BR01_2ND
+PROJECT=$(strip U4)
+valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
     $(foreach pro,$(valid_proj),$(warning $(pro)))
@@ -62,7 +62,8 @@ DEPS = devToolsRes.h
 all: clean ./lib/libiniparser.a $(TARGETS) install
 
 ./lib/libiniparser.a:./src/dictionary.o ./src/iniparser.o
-	$(AR) rcs $@ $^
+	[ -d "lib" ] || mkdir lib
+	$(AR) rcs -o $@ $^
 ./src/iniparser.o:./src/iniparser.c
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
 ./src/dictionary.o:./src/dictionary.c
@@ -106,12 +107,15 @@ prepare_dir:
 	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))
 
 install:prepare_dir
-	cp -rf for_user_file.ini for_mfg_file.ini readme.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf readme_for_development.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/readme.txt
+	cp -rf for_user_file.ini for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
 	cp -rf $(TARGET_DEV) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf readme_for_maintainment.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/readme.txt
 	cp -rf for_user_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(TARGET_MAINTAIN)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf readme_for_production.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
 	cp -rf for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(TARGET_PRODUCTION)  $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/

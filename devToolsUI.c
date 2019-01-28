@@ -3213,8 +3213,10 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		KillTimer(hwndMain,wParam);
 		dot_count = 0;
 		break;
-		/* case WM_CLOSE:
-		return (g_processing == TRUE) ? 0 : DefWindowProc(hwnd, message, wParam, lParam); */
+		case WM_CLOSE:
+		if(g_processing == FALSE || IDYES == MessageBox(hwndMain,TEXT("Warning:This operation may cause download incomplete.\nAre you sure want to quit?"),szAppName,MB_ICONWARNING | MB_YESNO))
+			return DefWindowProc(hwnd, message, wParam, lParam);
+		break;
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)
             {

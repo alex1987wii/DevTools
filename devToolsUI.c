@@ -2392,8 +2392,9 @@ static int linux_download(void)
 				snprintf(error_info,ERROR_INFO_MAX,"Waiting for reboot timeout.");
 				snprintf(error_msg,ERROR_INFO_MAX,"Waiting for reboot timeout.");
 				goto linux_download_error;
-			}
+			}			
 			ResetEvent(g_lan_event);
+			Sleep(6000);//wait for device reboot
 			StopDynamicInfo();
 			listening_on = IS_LISTENING_ON_NOTHING;
 		}

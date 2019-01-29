@@ -2394,7 +2394,7 @@ static int linux_download(void)
 				goto linux_download_error;
 			}			
 			ResetEvent(g_lan_event);
-			Sleep(6000);//wait for device reboot
+			Sleep(10000);//wait for device reboot
 			StopDynamicInfo();
 			listening_on = IS_LISTENING_ON_NOTHING;
 		}

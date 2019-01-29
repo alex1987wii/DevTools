@@ -68,7 +68,6 @@
  *  Macro definitions
  *  ===========================================================================
  */
-#define VERSION				0x0001
 
 #define DEBUG_NONE			0
 #define DEBUG_CONSOLE		1
@@ -76,6 +75,8 @@
 
 #define DEBUG_MODE			DEBUG_LOG	//fixme if you want change the debug mode
 #define LOGFILE				"devTool.log"
+
+
 
 #if (DEBUG_MODE == DEBUG_CONSOLE || DEBUG_LOG == DEBUG_MODE)
 #define UI_DEBUG(fmt,args...)			do{\
@@ -287,6 +288,7 @@ static BOOL g_on_batch = FALSE;
 #define IS_LISTENING_ON_NOTHING   (0)
 #define IS_LISTENING_ON_MFG       (1)
 #define IS_LISTENING_ON_SPL       (2)
+#define IS_LISTENING_ON_LINUX	  (3)
 
 static int listening_on = IS_LISTENING_ON_NOTHING;
 
@@ -294,6 +296,7 @@ static char work_path[MAX_PATH];/*the path for this program*/
 
 
 static HANDLE g_event = NULL;    // event
+static HANDLE g_lan_event = NULL;
 static HANDLE g_hBackGround = NULL;
 static HANDLE g_hTransfer = NULL;
 
@@ -493,7 +496,7 @@ static inline void dump_project(void)
 #elif defined(PRODUCTION)
 	"production"
 #endif
-	" tool for %s.\tVersion : 0x%04x.\n",PROJECT,VERSION);
+	" tool for %s.\tVersion : %s.\n",PROJECT,VERSION);
 
 }
 #if (DEBUG_MODE == DEBUG_LOG)
@@ -2233,7 +2236,7 @@ static BOOL InitMainWindow(void)
     screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
     /* Show the main window in the screen center */
-    sprintf(mainTitle, TEXT("%s For %s"), APP_TITLE, PROJECT);
+    sprintf(mainTitle, TEXT("%s For %s %s"), APP_TITLE, PROJECT,VERSION);
     hwndMain = CreateWindowEx(0, szAppName, mainTitle,
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPSIBLINGS,
             (screenWidth-DEV_TOOLS_WIDTH)/2, (screenHeight-DEV_TOOLS_HEIGHT)/2,
@@ -2316,7 +2319,7 @@ static void PopProgressBar( void )
       
 }
 
-static BOOL linux_init(const char *ip)
+static int linux_init(const char *ip)
 {	
 	int retval = -1;
 	char image[256];
@@ -2331,7 +2334,7 @@ static BOOL linux_init(const char *ip)
 	{		
 		snprintf(error_info,ERROR_INFO_MAX,"image not exsit");
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
-		return FALSE;
+		return -1;
 	}	
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
@@ -2343,13 +2346,12 @@ static BOOL linux_init(const char *ip)
 		image,image_length,ip,battery_check_sign);
 	retval = WinUpgradeLibInit(image,image_length,ip,battery_check_sign);
 		
-	if(retval != 0)
+	if(retval < 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Linux init error.");
-		snprintf(error_msg,ERROR_INFO_MAX,"Linux init error.Error code is %s.",get_error_info(retval));
-		return FALSE;
+		snprintf(error_msg,ERROR_INFO_MAX,"Linux init error.Error code is %s.",get_error_info(retval));		
 	}
-	return TRUE;
+	return retval;
 }
 
 static int linux_download(void)
@@ -2373,13 +2375,28 @@ static int linux_download(void)
 		log_print("ip = %s\n",ip);
 #endif
 		SetDynamicInfo("Linux init");
-		BOOL ret = linux_init(ip);
+		retval = linux_init(ip);
 		StopDynamicInfo();	
-		if(FALSE == ret)
+		if(retval < 0)
 		{			
 			goto linux_download_error;
 		}
-		
+		if(retval == 1)//Waiting for linux device insert
+		{
+			listening_on = IS_LISTENING_ON_LINUX;
+			SetDynamicInfo("Waiting for reboot");
+			if(WAIT_TIMEOUT == WaitForSingleObject(g_lan_event,10000))
+			{
+				StopDynamicInfo();
+				listening_on = IS_LISTENING_ON_NOTHING;
+				snprintf(error_info,ERROR_INFO_MAX,"Waiting for reboot timeout.");
+				snprintf(error_msg,ERROR_INFO_MAX,"Waiting for reboot timeout.");
+				goto linux_download_error;
+			}
+			ResetEvent(g_lan_event);
+			StopDynamicInfo();
+			listening_on = IS_LISTENING_ON_NOTHING;
+		}
 		transfer_start();/*start a progress thread*/	
 		dump_time();
 #ifdef DEVELOPMENT
@@ -3308,10 +3325,13 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					log_print("mfg device inserted.\n");
 					WAKE_THREAD_UP();					
 				}
-				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
+				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)) &&
+				listening_on == IS_LISTENING_ON_LINUX)
 				{
-					//lan device insert	
-					
+					//lan device insert					
+					dump_time();
+					log_print("linux device inserted.\n");					
+					SetEvent(g_lan_event);
 				}
 			}				
 		}
@@ -3599,6 +3619,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     }
 	open_debug_log();
     g_event = CreateEvent(NULL, TRUE, FALSE, NULL); // ManualReset
+	g_lan_event = CreateEvent(NULL,TRUE,FALSE,NULL);
     if (StartThread() == FALSE)
     {
         MessageBox(NULL, TEXT ("Create thread error"), szAppName, MB_ICONERROR);

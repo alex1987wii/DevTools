@@ -22,7 +22,8 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=$(strip U4)
+PROJECT=$(strip U3)
+VERSION=v00p02a
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
@@ -46,7 +47,7 @@ RC=windres
 
 # compile flag and link flag definitions
 
-CFLAGS  = -DCONFIG_PROJECT_$(PROJECT) -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(LIB)/include -DSF_VERSION=\"$(WIN_UTIL_VERSION)\" 
+CFLAGS  = -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(LIB)/include 
 LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./lib -liniparser
 
 # build target and dependency definitions

@@ -131,7 +131,11 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define MAX_STATUS					(6)
 	
 #if defined DEVELOPMENT
+#if defined LIMITED
+#define DEV_TOOLS_NUMBER        1  
+#else
 #define DEV_TOOLS_NUMBER        3           /* Unication dev tools have three utilities */
+#endif
 #elif defined MAINTAINMENT
 #define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
 #elif defined PRODUCTION
@@ -244,7 +248,7 @@ const char *ip_addr[IP_MAX] = {
 #if defined DEVELOPMENT
 PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", " For SPL ", " For MFG ","File Transfer",};
 #elif defined MAINTAINMENT
-PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Partition Transfer"};
+PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Upgrade"};
 #elif defined PRODUCTION
 PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
 #endif
@@ -606,14 +610,20 @@ static inline void CreatePartitionList(void)
 	for(i = 0; i < total_partition; ++i)
 	{
 		hwndPartitionCheckBox[i] = CreateWindow(TEXT("button"),
-		partition_name[i],
-		WS_CHILD | BS_AUTOCHECKBOX | WS_VISIBLE,
+		partition_name[i],		
+		WS_CHILD | BS_AUTOCHECKBOX | WS_VISIBLE,		
 		partition_x_pos + (i%cbs_per_line)*(WIDTH_CHECKBOX) + X_MARGIN,
 		partition_y_pos + (i/cbs_per_line)*HEIGHT_CONTROL + Y_MARGIN,
 		WIDTH_CHECKBOX, HEIGHT_CONTROL,
 		hwndPage,NULL,
 		hInst,NULL);
+		#ifdef LIMITED
+		if(i != 0 && i != 1 && i != 3)
+			SendMessage(hwndPartitionCheckBox[i],BM_CLICK,0,0);
+		EnableWindow(hwndPartitionCheckBox[i],FALSE);
+		#endif
 	}
+	
 }
 static inline void DestoryPartitionList(void)
 {
@@ -656,7 +666,9 @@ void update_ui_resources(int enable)
 		
 #ifdef DEVELOPMENT
 		EnableWindow(hwndLinPage,enable);
-		EnablePartitionList(enable);		
+		#ifndef LIMITED
+		EnablePartitionList(enable);
+		#endif		
 #endif
 		break;
 		case SELECT_SPL_PROGRAMMING:		
@@ -665,8 +677,9 @@ void update_ui_resources(int enable)
 		
 #ifdef DEVELOPMENT
 		EnableWindow(hwndSPLPage,enable);
+		#ifndef LIMITED
 		EnablePartitionList(enable);
-		
+		#endif
 #endif		
 		break;
 		case SELECT_MFG_PROGRAMMING:		
@@ -675,7 +688,9 @@ void update_ui_resources(int enable)
 		EnableWindow(hwndCheckBoxBatch,enable);
 #ifdef DEVELOPMENT
 		EnableWindow(hwndMFGPage,enable);
-		EnablePartitionList(enable);		
+		#ifndef LIMITED
+		EnablePartitionList(enable);
+		#endif		
 #endif			
 		break;
 		case SELECT_FILE_TRANSFER:		
@@ -2502,6 +2517,8 @@ static int spl_download(void)
 		snprintf(error_msg,ERROR_INFO_MAX,"SPL download error,Error code is %s.",get_error_info(retval));
 		goto spl_download_error;
 	}
+	if(partition_selected == 0)
+		return 0;
 	retval = linux_download();	
 	if(retval != 0)
 		goto spl_download_error;	
@@ -2599,7 +2616,10 @@ static void spl_download_complete_cb(int retval,void *private_data)
 	if(retval == 0)
 	{
 		dump_time();
-		log_print("spl download success.\n");
+		if(partition_selected == 0)
+			log_print("run rescue_image success.\n");
+		else
+			log_print("spl download success.\n");
 		SetWindowText(hwndInfo,"Complete");
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
@@ -3058,10 +3078,10 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 		{
 			partition_selected |= (Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED)?(1<<i):0;
 		}
-		if(partition_selected == 0)
+		if(partition_selected == 0 && IDYES != MessageBox(hwndMain,"No partition select.Are you sure want to run rescue image?",szAppName,MB_ICONINFORMATION|MB_YESNO))
 		{
 			log_print("No partition select.\n");
-			ERROR_MESSAGE("No partition select.");
+			//ERROR_MESSAGE("No partition select.");
 			return TRUE;
 		}
 		if(check_ini() == FALSE)
@@ -3340,6 +3360,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		case WM_CREATE_PARTITION_LIST:
 		log_print("create partition list.\n");
 		CreatePartitionList();
+		
 		break;
 		case WM_DESTROY_PARTITION_LIST:
 		log_print("destory partition list.\n");
@@ -3602,12 +3623,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 		MessageBox(NULL,TEXT("DLL lost"),szAppName,MB_ICONERROR);
 		return 0;
 	}
-
+/* 
 	if(_access("sys",0))
 	{
 		MessageBox(NULL,TEXT("sys lost"),szAppName,MB_ICONERROR);
 		return 0;
-	}
+	} */
 #endif
 	//Initialize net
 	WSADATA wsaData;

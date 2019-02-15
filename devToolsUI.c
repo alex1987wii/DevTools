@@ -1587,9 +1587,10 @@ static void InitLinuxWindow(void)
 	relative_x = GBOX1_START_X;
     relative_y = start_y_of_Groupbox2;
 
-#ifndef MAINTAINMENT
-    relative_x += H_GAPS * 2;
+	relative_x += H_GAPS * 2;
     relative_y += V_GAPS + HEIGHT_TAG;
+#ifndef MAINTAINMENT
+    
 	console_print("hwndLinStaticImg's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_TEXT, HEIGHT_CONTROL);
 	hwndLinStaticImg = CreateWindow( TEXT ("static"), "    Image:",
@@ -1615,9 +1616,7 @@ static void InitLinuxWindow(void)
 	
 	relative_x += WIDTH_EDIT + X_MARGIN;
 	relative_y += HEIGHT_CONTROL + Y_MARGIN;
-#endif
-
-#if 0&&(defined(MAINTAINMENT) && !defined(U3_LIB))
+#else
 	hwndCheckBoxDelete = CreateWindow( TEXT("button"), "Delete User Data",
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             relative_x, relative_y,
@@ -1625,7 +1624,7 @@ static void InitLinuxWindow(void)
             hwndLinPage, NULL,
             hInst, NULL);
     relative_y += HEIGHT_CONTROL;
-	hwndLinStaticNotice = CreateWindow( TEXT("static"), "**CAUTION**\nAll user data will be delete if this option is selected.",
+	hwndLinStaticNotice = CreateWindow( TEXT("static"), "**CAUTION**\nAll userdata[profile and encryption key] will be delete if this option is selected.",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
             relative_x, relative_y,
             STATIC_WIDTH, HEIGHT_CONTROL+2*Y_MARGIN,
@@ -2419,12 +2418,19 @@ static int linux_download(void)
 		log_print("burnpartition() : partition_selected = 0x%04x\n",partition_selected);
 		retval = burnpartition(partition_selected);
 #elif defined(MAINTAINMENT)
-		log_print("burnImage() called.\n"); 
-		retval = burnImage();
-#if 0	
+		
 		if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
-			retval = burnpartition(0xxxx);
-#endif
+		{
+
+			log_print("burnpartition() : partition_selected = 0x%04x\n",((1<<total_partition)-1)&~0x000B);
+			retval = burnpartition(((1<<total_partition)-1)&~0x000B);
+		}
+		else
+		{
+			log_print("burnImage() called.\n"); 
+			retval = burnImage();
+		}		
+
 #elif defined(PRODUCTION)
 		/*burn all partition*/
 		log_print("burnpartition() : partition_selected = all partition.\n");

@@ -611,7 +611,7 @@ static inline void CreatePartitionList(void)
 	{
 		hwndPartitionCheckBox[i] = CreateWindow(TEXT("button"),
 		partition_name[i],		
-		WS_CHILD | BS_AUTOCHECKBOX | WS_VISIBLE,		
+		WS_CHILD | BS_CHECKBOX | WS_VISIBLE,		
 		partition_x_pos + (i%cbs_per_line)*(WIDTH_CHECKBOX) + X_MARGIN,
 		partition_y_pos + (i/cbs_per_line)*HEIGHT_CONTROL + Y_MARGIN,
 		WIDTH_CHECKBOX, HEIGHT_CONTROL,
@@ -650,7 +650,29 @@ static inline void EnablePartitionList(BOOL enable)
 		EnableWindow(hwndPartitionCheckBox[i],enable);
 	}
 }
-
+static BOOL process_partitionlist(HWND hwnd)
+{
+	int i;
+	if(hwndPartitionCheckBox[0] == NULL)
+		return FALSE;
+	for(i = 0; i < total_partition; ++i)
+	{
+		if(hwnd == hwndPartitionCheckBox[i])
+		{
+			if(i == 3 && Button_GetCheck(hwndPartitionCheckBox[i]) == BST_UNCHECKED)//calibration
+			{
+				if(IDYES == MessageBox(hwndMain,TEXT("WARNING:This partition should never been checked unless you exectly known what it is repesent for.\nCheck it anyway?"),szAppName,MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2))
+				{
+					Button_SetCheck(hwndPartitionCheckBox[i],BST_CHECKED);
+				}
+			}
+			else
+				Button_SetCheck(hwndPartitionCheckBox[i],Button_GetCheck(hwndPartitionCheckBox[i]) == BST_CHECKED ? BST_UNCHECKED : BST_CHECKED);
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
 void update_ui_resources(int enable)
 {	
 	/*BtnDown enable if error occurs,but disable by reset_ui_resources when successfully complete*/
@@ -2992,7 +3014,8 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	{
 		CLEAR_INFO();
 	} */
-
+	if(process_partitionlist(hwnd))
+		return TRUE;
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxDelete)
 	{
@@ -3071,7 +3094,8 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 	{
 		CLEAR_INFO();
 	} */
-	log_print("\n");
+	if(process_partitionlist(hwnd))
+		return TRUE;
 	if(hwnd == hwndSPLBtnDown)
 	{
 		int i;
@@ -3117,7 +3141,8 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 	{
 		CLEAR_INFO();
 	} */
-	
+	if(process_partitionlist(hwnd))
+		return TRUE;
 	if(hwnd == hwndMFGBtnDown)
 	{
 		log_print("\n");

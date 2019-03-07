@@ -1646,7 +1646,7 @@ static void InitLinuxWindow(void)
             hwndLinPage, NULL,
             hInst, NULL);
     relative_y += HEIGHT_CONTROL;
-	hwndLinStaticNotice = CreateWindow( TEXT("static"), "**CAUTION**\nAll userdata[profile and encryption key] will be delete if this option is selected.",
+	hwndLinStaticNotice = CreateWindow( TEXT("static"), "**CAUTION**\nAll userdata[profile and encryption key] will be delete\nif this option is selected.",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
             relative_x, relative_y,
             STATIC_WIDTH, HEIGHT_CONTROL+2*Y_MARGIN,

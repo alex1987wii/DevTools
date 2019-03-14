@@ -61,9 +61,14 @@
 #include "UpgradeLib.h"
 #include "uni_image_header.h"
 #include "error_code.h"
-#include "devToolsUI_private.h"
 #include "devToolsRes.h"
 #include "iniparser.h"
+
+#ifdef MAINTAINMENT
+#include "for_end_user/devToolsUI_private.h"
+#else
+#include "devToolsUI_private.h"
+#endif
 /*  ===========================================================================
  *  Macro definitions
  *  ===========================================================================
@@ -90,7 +95,7 @@ MessageBox(hwndMain,buff,TEXT("UI_DEBUG"),MB_ICONWARNING);}while(0)
 
 #elif (DEBUG_MODE == DEBUG_LOG)
 static FILE *log_fp = NULL;
-#define log_print(fmt,args...)		fprintf(log_fp,fmt,##args)
+#define log_print(fmt,args...)		do{if(log_fp){fprintf(log_fp,fmt,##args);fflush(log_fp);}}while(0)
 #define console_print(fmt,args...)
 #endif
 
@@ -220,6 +225,76 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
 #endif
 
+
+/*UI error code definition */
+#define UI_ERROR_NUM_MAX	(100)
+#define UI_ERROR_START		(-1000 - UI_ERROR_NUM_MAX)
+#define OK		0
+unsigned short error_code = OK;		
+enum _UI_ERROR_CODE{
+	EC_INI_FILE_NOT_EXSIT = UI_ERROR_START,
+	EC_INI_FILE_SYNTAX_ERROR,
+	EC_INI_IP_NOT_SPECIFY,
+	EC_INI_IP_INVALID,
+	EC_INI_IP_TOO_MANY,
+	EC_INI_IMAGE_NOT_SPECIFY,
+	EC_INI_IMAGE_NOT_EXSIT,
+	EC_INI_IMAGE_INVALID,
+	EC_INI_IMAGE_INCOMPATIBLE,
+	EC_INI_RESCUE_IMAGE_NOT_SPECIFY,
+	EC_INI_RESCUE_IMAGE_NOT_EXSIT,
+	EC_INI_RESCUE_IMAGE_INVALID,
+	EC_INI_RESCUE_IMAGE_INCOMPATIBLE,
+	EC_NO_PARTITION_SELECTED,
+	EC_WAIT_REBOOT_TIMEOUT
+};
+#ifdef MAINTAINMENT
+struct _error_code_info ui_error_code_info[] = {
+	{EC_INI_FILE_NOT_EXSIT,"EC_INI_FILE_NOT_EXSIT,Tool package broken,please re-install this tool."},
+	{EC_INI_FILE_SYNTAX_ERROR,"EC_INI_FILE_SYNTAX_ERROR,Tool package broken,please re-install this tool."},
+	{EC_INI_IP_NOT_SPECIFY,"EC_INI_IP_NOT_SPECIFY,Tool package broken,please re-install this tool."},
+	{EC_INI_IP_INVALID,"EC_INI_IP_INVALID,Tool package broken,please re-install this tool."},
+	{EC_INI_IP_TOO_MANY,"EC_INI_IP_TOO_MANY,Tool package broken,please re-install this tool."},
+	{EC_INI_IMAGE_NOT_SPECIFY,"EC_INI_IMAGE_NOT_SPECIFY,Tool package broken,please re-install this tool."},
+	{EC_INI_IMAGE_NOT_EXSIT,"EC_INI_IMAGE_NOT_EXSIT,Can't find Image,please check if it's exsit."},
+	{EC_INI_IMAGE_INVALID,"EC_INI_IMAGE_INVALID,Image broken,please use the complete image."},
+	{EC_INI_IMAGE_INCOMPATIBLE,"EC_INI_IMAGE_INCOMPATIBLE,Image incompatible,please use the right image for target."},
+	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"EC_INI_RESCUE_IMAGE_NOT_SPECIFY,Ini file error,rescue_image not specified."},
+	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"EC_INI_RESCUE_IMAGE_NOT_EXSIT,Ini file error,rescue_image not specified."},
+	{EC_INI_RESCUE_IMAGE_INVALID,"EC_INI_RESCUE_IMAGE_INVALID,Ini file error,rescue_image invalid."},
+	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"EC_INI_RESCUE_IMAGE_INCOMPATIBLE,Ini file error,rescue_image incompatible."},
+	{EC_NO_PARTITION_SELECTED,"EC_NO_PARTITION_SELECTED,Error! No partition selected."},
+	{EC_WAIT_REBOOT_TIMEOUT,"EC_WAIT_REBOOT_TIMEOUT,Wait for reboot timeout,please try it again."},
+};
+/*info*/
+#define LINUX_INIT			"Preparing"
+
+#else
+struct _error_code_info ui_error_code_info[] = {
+	{EC_INI_FILE_NOT_EXSIT,"EC_INI_FILE_NOT_EXSIT"},
+	{EC_INI_FILE_SYNTAX_ERROR,"EC_INI_FILE_SYNTAX_ERROR"},
+	{EC_INI_IP_NOT_SPECIFY,"EC_INI_IP_NOT_SPECIFY"},
+	{EC_INI_IP_INVALID,"EC_INI_IP_INVALID"},
+	{EC_INI_IP_TOO_MANY,"EC_INI_IP_TOO_MANY"},
+	{EC_INI_IMAGE_NOT_SPECIFY,"EC_INI_IMAGE_NOT_SPECIFY"},
+	{EC_INI_IMAGE_NOT_EXSIT,"EC_INI_IMAGE_NOT_EXSIT"},
+	{EC_INI_IMAGE_INVALID,"EC_INI_IMAGE_INVALID"},
+	{EC_INI_IMAGE_INCOMPATIBLE,"EC_INI_IMAGE_INCOMPATIBLE"},
+	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"EC_INI_RESCUE_IMAGE_NOT_SPECIFY"},
+	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"EC_INI_RESCUE_IMAGE_NOT_EXSIT"},
+	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"EC_INI_RESCUE_IMAGE_INCOMPATIBLE"},
+	{EC_NO_PARTITION_SELECTED,"EC_NO_PARTITION_SELECTED"},
+	{EC_WAIT_REBOOT_TIMEOUT,"EC_WAIT_REBOOT_TIMEOUT"},
+};
+/*info*/
+#define LINUX_INIT			"Linux init"
+
+#endif
+#ifdef MAINTAINMENT
+const char *ec_not_found = "Error occurs,please try it again.If it happened again please contact your support personnel for assistance.";
+#else
+const char *ec_not_found = "error code not found";
+#endif
 
 static char partition_name[UNI_MAX_PARTITION][UNI_MAX_PARTITION_NAME_LEN];
 static int total_partition = 0;
@@ -465,8 +540,7 @@ BOOL InitDebugConsole( void )
 {   
 	log_fp = fopen(LOGFILE,"w+");
 	if(log_fp == NULL)
-		return FALSE;
-	setvbuf(log_fp,NULL,_IOLBF,0);
+		return FALSE;	
     return TRUE;
 }
 void ExitDebugConsole( void )
@@ -755,6 +829,7 @@ static BOOL get_image_info(const char*image)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit,check your image if it's in current work path.",image);
+		error_code = EC_INI_IMAGE_NOT_EXSIT;
 		return FALSE;
 	}
 	uni_image_header_t image_header;
@@ -764,6 +839,7 @@ static BOOL get_image_info(const char*image)
 		fclose(fp);
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
 		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:%s",image);
+		error_code = EC_INI_IMAGE_INVALID;
 		return FALSE;
 	}
 	fclose(fp);
@@ -789,6 +865,7 @@ static BOOL get_image_info(const char*image)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
 		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:%s",image);
+		error_code = EC_INI_IMAGE_INVALID;
 		return FALSE;
 	}
 	total_partition = image_header.total_partitions;
@@ -796,6 +873,7 @@ static BOOL get_image_info(const char*image)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Invalid image.");
 		snprintf(error_msg,ERROR_INFO_MAX,"Invalid image:%s",image);
+		error_code = EC_INI_IMAGE_INVALID;
 		return FALSE;
 	}
 	int i;
@@ -950,7 +1028,7 @@ EXIT:
 * burn_mode = SELECT_MFG_PROGRAMMING:(include development tools and production tools)
 *			ip key and rescue_image key is necessary,rescue_image must exsit,image key is irrelevant(specified by browser)
 */
-static inline BOOL check_ini(void)
+static BOOL check_ini(void)
 {
 	/*read the ini file and parse it into struct*/
 	/*if don't need a ini file then return TRUE*/
@@ -960,6 +1038,7 @@ static inline BOOL check_ini(void)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"ini file lost.");
 		snprintf(error_msg,ERROR_INFO_MAX,"%s lost.",ini_file);
+		error_code = EC_INI_FILE_NOT_EXSIT;
 		return FALSE;
 	}
 	BOOL ret = parse_ini_file(ini_file);
@@ -967,7 +1046,8 @@ static inline BOOL check_ini(void)
 	if(ret == FALSE)
 	{		
 		snprintf(error_info,ERROR_INFO_MAX,"ini file invalid configuration.");
-		snprintf(error_msg,ERROR_INFO_MAX,"%s invalid configuration.",ini_file);		
+		snprintf(error_msg,ERROR_INFO_MAX,"%s invalid configuration.",ini_file);
+		error_code = EC_INI_FILE_SYNTAX_ERROR;
 		return FALSE;
 	}
 	switch(burn_mode)
@@ -978,6 +1058,7 @@ static inline BOOL check_ini(void)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"No ip specified.");
 			snprintf(error_msg,ERROR_INFO_MAX,"No ip specified in %s",ini_file);
+			error_code = EC_INI_IP_NOT_SPECIFY;
 			return FALSE;
 		}
 #ifdef MAINTAINMENT
@@ -985,16 +1066,18 @@ static inline BOOL check_ini(void)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"No image specified.");
 			snprintf(error_msg,ERROR_INFO_MAX,"No image specified in %s",ini_file);
+			error_code = EC_INI_IMAGE_NOT_SPECIFY;
 			return FALSE;
 		}
 		if(_access(ini_file_info.name_of_image,0))
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"can't find image.");
 			snprintf(error_msg,ERROR_INFO_MAX,"can't find %s.",ini_file_info.name_of_image);
+			error_code = EC_INI_IMAGE_NOT_EXSIT;
 			return FALSE;
 		}
 		if(get_image_info(ini_file_info.name_of_image) == FALSE)
-		{
+		{			
 			return FALSE;
 		}
 #endif
@@ -1005,18 +1088,21 @@ static inline BOOL check_ini(void)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"No ip specified.");
 			snprintf(error_msg,ERROR_INFO_MAX,"No ip specified in %s",ini_file);
+			error_code = EC_INI_IP_NOT_SPECIFY;
 			return FALSE;
 		}		
 		if(ini_file_info.name_of_rescue_image[0] == 0)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"No rescue image specified.");
 			snprintf(error_msg,ERROR_INFO_MAX,"No rescue image specified in %s",ini_file);
+			error_code = EC_INI_RESCUE_IMAGE_NOT_SPECIFY;
 			return FALSE;
 		}
 		if(_access(ini_file_info.name_of_rescue_image,0))
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"can't find rescue image.");
 			snprintf(error_msg,ERROR_INFO_MAX,"can't find %s.",ini_file_info.name_of_rescue_image);
+			error_code = EC_INI_RESCUE_IMAGE_NOT_EXSIT;
 			return FALSE;
 		}
 		break;
@@ -1031,8 +1117,7 @@ static void ChangeProgressBar(int percent)
     SetWindowText(hwndPopPercent, TEXT(temp));
     
     /* update the progress bar */
-    SendMessage(hwndPopProgress, PBM_SETPOS, (WPARAM)percent, 0L); 
-    
+    SendMessage(hwndPopProgress, PBM_SETPOS, (WPARAM)percent, 0L);   
     return;
 }
 static inline void ChangeProgressBarText(const char *string)
@@ -1049,26 +1134,27 @@ static inline void DestoryProgressBar(void)
     return;
 }
 
-/*  ===========================================================================
- *  Static Variable Definitions
- *  ===========================================================================
- */
+
 
 static char *get_error_info(unsigned short ec)
 {
-    int i;
-
+    int i;	
+	/*first find it in ui_error_code_info table*/
+	for(i = 0; i < (sizeof(ui_error_code_info)/sizeof(ui_error_code_info[0]));i++)
+	{
+		if(ec == ui_error_code_info[i].ec)
+			return ui_error_code_info[i].string;
+	}
+	/*ec is not in ui_error_code_info table,then find it in error_code_info table*/
     for (i=0; i<(sizeof(error_code_info)/sizeof(error_code_info[0])); i++)
     {
-        unsigned short k = error_code_info[i].ec;
-
-        if (k == ec)
+		if (error_code_info[i].ec == ec)
         {
             return (char *)error_code_info[i].string;
         }
     }
-
-    return "error code not found";
+	/*not found*/
+    return ec_not_found;
 }
 
 /*{*/
@@ -1211,7 +1297,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		if(retval != 0)
 		{
 			dump_time();
-			log_print("progress_reply_status_get return errcode:%s\n",get_error_info(retval));
+			log_print("progress_reply_status_get return errcode : 0x%04x\n",retval);
 			break;
 		}		
 		//log_print("index = %d, percent = %d, status = %d\n",index,percent,status);
@@ -1584,7 +1670,7 @@ static void InitLinuxWindow(void)
     hwndLinStaticInfo = CreateWindow( TEXT("static"), "",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
             relative_x, relative_y,
-            STATIC_WIDTH, HEIGHT_CONTROL+10,
+            STATIC_WIDTH, HEIGHT_CONTROL*2,
             hwndLinPage, NULL,
             hInst, NULL);
 
@@ -2410,7 +2496,7 @@ static int linux_download(void)
 		}
 		log_print("ip = %s\n",ip);
 #endif
-		SetDynamicInfo("Linux init");
+		SetDynamicInfo(LINUX_INIT);
 		retval = linux_init(ip);
 		StopDynamicInfo();	
 		if(retval < 0)
@@ -2462,9 +2548,8 @@ static int linux_download(void)
 		transfer_complete();
 		
 #ifdef MAINTAINMENT
-		if(retval == 0xFDBB)/*EC_USERDATA_UPGRADE_FAIL*/
-		{
-			
+		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxDelete) != BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
+		{		
 			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe data of your device)",szAppName,MB_YESNO|MB_ICONWARNING))
 			{
 				dump_time();
@@ -2472,10 +2557,10 @@ static int linux_download(void)
 				/*Select Yes,force to download by invoke burnpartition*/
 				transfer_start();			
 			#ifdef U3_LIB
-				log_print("burnpartition() : partition_selected = %04x(userdata).\n",1<<5);
+				log_print("burnpartition() : partition_selected = 0x%04x.\n",1<<5);
 				retval = burnpartition(1<<5);//userdata
 			#else
-				log_print("burnpartition() : partition_selected = %04x.\n",0x03E0);
+				log_print("burnpartition() : partition_selected = 0x%04x.\n",0x03E0);
 				retval = burnpartition(0x03E0);
 			#endif
 				transfer_complete();
@@ -2487,7 +2572,7 @@ static int linux_download(void)
 				/*Select No,reboot this cpu,then do next cpu*/
 				RebootTarget(ip);
 				retval = 0;
-			}
+			}	
 		}
 		
 #endif
@@ -2501,7 +2586,7 @@ static int linux_download(void)
 	
 	return 0;
 linux_download_error:	
-	return -1;
+	return retval;
 }
 
 static BOOL spl_init(void)
@@ -2552,7 +2637,7 @@ static int spl_download(void)
 		goto spl_download_error;	
 	return 0;
 spl_download_error:	
-	return -1;
+	return retval;
 }
 static BOOL mfg_init(void)
 {
@@ -2621,7 +2706,7 @@ static int mfg_download(void)
 	
 	return 0;
 mfg_download_error:	
-	return -1;
+	return retval;
 }
 
 static void linux_download_complete_cb(int retval,void *private_data)
@@ -2704,6 +2789,9 @@ static BOOL OnBtnBrowser(void)
 		SetWindowText(hwndStaticBrowser,image);
 		if(get_image_info(image) == FALSE)
 		{
+#ifdef DEVELOPMENT
+			SendMessage(hwndMain,WM_DESTROY_PARTITION_LIST,0,0);			
+#endif
 			EnableWindow(hwndBtnDown,FALSE);
 			SendMessage(hwndMain,WM_ERROR,-1,0);
 		}
@@ -3010,10 +3098,10 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 {	
 	
 	HWND hwnd = (HWND)lParam;
-	/* if(g_processing == FALSE)
+	/*if(g_processing == FALSE)
 	{
 		CLEAR_INFO();
-	} */
+	}*/
 	if(process_partitionlist(hwnd))
 		return TRUE;
 #ifdef MAINTAINMENT
@@ -3031,6 +3119,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		log_print("\n");
 		dump_time();
 		log_print("button LinBtnBrowser clicked.\n");
+		CLEAR_INFO();
 		return OnBtnBrowser();		
 	}
 	else if(hwnd == hwndLinBtnDown){
@@ -3130,6 +3219,7 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 		log_print("\n");
 		dump_time();
 		log_print("button SPLBtnBrowser clicked.\n");
+		CLEAR_INFO();
 		return OnBtnBrowser();
 	}
 	return TRUE;
@@ -3191,6 +3281,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		log_print("\n");
 		dump_time();
 		log_print("button MFGBtnBrowser clicked.\n");
+		CLEAR_INFO();
 		return OnBtnBrowser();
 	}
 	else if(hwnd == hwndMFGBtnStop)
@@ -3406,6 +3497,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		
 		case WM_ERROR:
 		dump_time();
+#if 0
 		if(wParam != -1)//appending error code string
 		{
 			snprintf(error_msg+strlen(error_msg),ERROR_INFO_MAX-strlen(error_msg)," Error code is: %s",get_error_info(wParam));
@@ -3422,6 +3514,18 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		}
 		error_info[0] = 0;
 		error_msg[0] = 0;
+#else
+		const char *info;
+		/*not use error_info and error_msg buffer any more,just use error_code(for UI),wParam(for lib) and error code table to display error message*/
+		if(error_code == OK && wParam != -1)
+			error_code = wParam;		
+		info = get_error_info(error_code);
+		log_print("Error : error code is 0x%04x.\n",error_code);
+		log_print("error_info : %s\n",info);
+		SetWindowText(hwndInfo,info);
+		ERROR_MESSAGE(info);		
+#endif//DEVELOPMENT
+		error_code = OK;
 		break;		
 		case WM_INVOKE_CALLBACK:
 		if (g_complete_func)
@@ -3651,7 +3755,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 #ifdef MAINTAINMENT
 	if(_access("DLL",0))
 	{
-		MessageBox(NULL,TEXT("DLL lost"),szAppName,MB_ICONERROR);
+		MessageBox(NULL,TEXT("Tool package broken,please re-install this tool."),szAppName,MB_ICONERROR);
 		return 0;
 	}
 /* 
@@ -3735,8 +3839,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-    }
-	
+    }	
 	unregister_notifyer();
 	
     CloseHandle(g_event);   

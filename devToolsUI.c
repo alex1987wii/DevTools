@@ -260,7 +260,7 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_INI_IMAGE_INVALID,"EC_INI_IMAGE_INVALID,Image broken,please use the complete image."},
 	{EC_INI_IMAGE_INCOMPATIBLE,"EC_INI_IMAGE_INCOMPATIBLE,Image incompatible,please use the right image for target."},
 	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"EC_INI_RESCUE_IMAGE_NOT_SPECIFY,Ini file error,rescue_image not specified."},
-	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"EC_INI_RESCUE_IMAGE_NOT_EXSIT,Ini file error,rescue_image not specified."},
+	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"EC_INI_RESCUE_IMAGE_NOT_EXSIT,Ini file error,rescue_image not exsit."},
 	{EC_INI_RESCUE_IMAGE_INVALID,"EC_INI_RESCUE_IMAGE_INVALID,Ini file error,rescue_image invalid."},
 	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"EC_INI_RESCUE_IMAGE_INCOMPATIBLE,Ini file error,rescue_image incompatible."},
 	{EC_NO_PARTITION_SELECTED,"EC_NO_PARTITION_SELECTED,Error! No partition selected."},
@@ -442,7 +442,7 @@ static HWND    hwndLinStaticImg;
 static HWND    hwndLinStaticBrowser;
 
 static HWND    hwndLinBtnBrowser,hwndLinBtnDown,hwndBtnEnableTelnet;
-static HWND    hwndCheckBoxDelete,hwndCheckBoxSkipBatCheck;
+static HWND    hwndCheckBoxUserdata,hwndCheckBoxSkipBatCheck;
 
 
 /**********************SPL Handler Declaration*************************/
@@ -756,7 +756,7 @@ void update_ui_resources(int enable)
 		EnableWindow(hwndLinBtnBrowser,enable);
 		EnableWindow(hwndLinBtnDown,enable);
 		EnableWindow(hwndLinBtnRefresh,enable);
-		EnableWindow(hwndCheckBoxDelete,enable);
+		EnableWindow(hwndCheckBoxUserdata,enable);
 		EnableWindow(hwndBtnEnableTelnet,enable);
 		EnableWindow(hwndCheckBoxSkipBatCheck,enable);
 		
@@ -1725,19 +1725,15 @@ static void InitLinuxWindow(void)
 	relative_x += WIDTH_EDIT + X_MARGIN;
 	relative_y += HEIGHT_CONTROL + Y_MARGIN;
 #else
-	hwndCheckBoxDelete = CreateWindow( TEXT("button"), "Delete User Data",
-            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+	hwndCheckBoxUserdata = CreateWindow( TEXT("button"), "Keep User Data",
+            WS_CHILD | WS_VISIBLE | BS_CHECKBOX,
             relative_x, relative_y,
             WIDTH_BUTTON*2, HEIGHT_CONTROL,
             hwndLinPage, NULL,
             hInst, NULL);
     relative_y += HEIGHT_CONTROL;
-	hwndLinStaticNotice = CreateWindow( TEXT("static"), "**CAUTION**\nAll userdata[profile and encryption key] will be delete\nif this option is selected.",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            relative_x, relative_y,
-            STATIC_WIDTH, HEIGHT_CONTROL+2*Y_MARGIN,
-            hwndLinPage, NULL,
-            hInst, NULL);   
+	SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default checked
+	
     relative_y += HEIGHT_CONTROL + 2*Y_MARGIN;
 #endif
 
@@ -2527,7 +2523,7 @@ static int linux_download(void)
 		retval = burnpartition(partition_selected);
 #elif defined(MAINTAINMENT)
 		
-		if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
+		if(Button_GetCheck(hwndCheckBoxUserdata) == BST_UNCHECKED)
 		{
 
 			log_print("burnpartition() : partition_selected = 0x%04x\n",((1<<total_partition)-1)&~0x000B);
@@ -2548,7 +2544,7 @@ static int linux_download(void)
 		transfer_complete();
 		
 #ifdef MAINTAINMENT
-		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxDelete) != BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
+		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
 		{		
 			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe data of your device)",szAppName,MB_YESNO|MB_ICONWARNING))
 			{
@@ -3105,12 +3101,16 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	if(process_partitionlist(hwnd))
 		return TRUE;
 #ifdef MAINTAINMENT
-	if(hwnd == hwndCheckBoxDelete)
+	if(hwnd == hwndCheckBoxUserdata)
 	{
-		if(Button_GetCheck(hwndCheckBoxDelete) == BST_CHECKED)
-			SetWindowText(hwndLinBtnDown,TEXT("Download"));
+		if(Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED && IDYES == MessageBox(hwndMain,TEXT("**CAUTION**\nAll userdata[profile and encryption key] will be deleted when upgrade if this option is unchecked.\nUncheck it anyway?"),szAppName,MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2))
+		{
+			SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_UNCHECKED,0);			
+		}			
 		else
-			SetWindowText(hwndLinBtnDown,TEXT("Upgrade"));
+		{
+			SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);			
+		}
 		return TRUE;
 	}
 #endif	

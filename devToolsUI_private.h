@@ -38,9 +38,12 @@ struct _error_code_info
 };
 
 /*const*/ struct _error_code_info error_code_info[] = 
-{	
-    {0xFC18, "ERROR_CODE_OPEN_FILE_ERROR, There is a problem with this update package. A image/DLL required for this update could not be run. Please verify the update package and try again, or contact your support personnel for assistance.."},                    // FC18    
-    {0xFC1C, "ERROR_CODE_FT_CMD_ERROR, There is a problem with this update package. The installer may not match your target. Please verify the installer and try again."}, // FC1C  
+{
+	{0xFDFF, "Please check image again."},// For U3 Only
+    {0xFDFE, "Please init first"}, // For U3 Only
+    {0xFC18, "There is a problem with this update package. A image/DLL required for this update could not be run. Please verify the update package and try again, or contact your support personnel for assistance.."},                    // FC18    
+
+    {0xFC1C, "There is a problem with this update package. The installer may not match your target. Please verify the installer and try again."}, // FC1C  
     {0xFC1D, "ERROR_CODE_FT_CMD_NOT_SUPPORT, There is a problem with this update package. The installer may not match your target. Please verify the installer and try again."},                 // FC1D   
     {0xFC1E, "ERROR_CODE_TRANSFER_TYPE_NOT_SUPPORT, There is a problem with file transfer. Please try again later. If same error occurs again, please contact your support personnel for assistance."},          // FC1E   
     {0xFC1F, "ERROR_CODE_TRANSFER_TYPE_ERROR, There is a problem with file transfer. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                // FC1F   
@@ -62,13 +65,13 @@ struct _error_code_info
     {0xFC39, "ERROR_CODE_IOCTL_NANDSETINECC, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                 // FC39
     {0xFC3A, "ERROR_CODE_FT_CMD_VERSION_ERROR, There is a problem with this update package. The installer may not match your target. Please verify the installer and try again."},               // FC3A
     {0xFC3B, "ERROR_CODE_IOCTL_NANDWRITEPAGE, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                // FC3B
-    {0xFC3C, "ERROR_CODE_RUNNING_MODE_UNKNOW, retry again"},   // FC3C
+    
     
     {0xFC3E, "ERROR_CODE_DATA_VERIFY_NOT_PASSED, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},             // FC3E
     {0xFC3F, "ERROR_CODE_DATA_VERIFY_MEMORY_ALLOC_ERROR, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},     // FC3F
     {0xFC40, "ERROR_CODE_DATA_VERIFY_TOO_MANY_BAD_BLOCK, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},     // FC40
     {0xFC41, "ERROR_CODE_FT_VER_ERROR, There is a problem with this update package. The installer may not match your target. Please verify the installer and try again."},                       // FC41   
-    
+
     {0xFC43, "ERROR_CODE_CALCULATE_CRC_ERROR, There is a problem with file transfer. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                // FC43
     {0xFC44, "ERROR_CODE_FT_WANTED_NOT_MATCH, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                // FC44
     {0xFC45, "ERROR_CODE_FT_UNKNOW_ERROR, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                    // FC45
@@ -76,7 +79,7 @@ struct _error_code_info
     
     {0xFC4C, "ERROR_CODE_WANTED_FILE_CAN_NOT_BE_SAVED, There is a problem with file transfer. Please try again later. If same error occurs again, please contact your support personnel for assistance."},       // FC4C
     {0xFC4D, "ERROR_CODE_WANTED_OPERATION_IS_NOT_SUPPORT, There is a problem with file transfer. Please try again later. If same error occurs again, please contact your support personnel for assistance."},    // FC4D
-    
+   
     {0xFC52, "ERROR_CODE_CALCULATE_HEADER_CRC_ERROR, There is a problem with this update package. A image/DLL required for this update could not be run. Please verify the update package or contact your support personnel for assistance."},         // FC52
     {0xFC53, "ERROR_CODE_IMAGE_IS_NOT_FOR_THIS_TARGET_BOARD, There is a problem with this update package. The image may not match your target. Please verify the image and try again."}, // FC53
     {0xFC54, "ERROR_CODE_PARTITION_IS_PROTECTED, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},             // FC54
@@ -84,14 +87,13 @@ struct _error_code_info
     {0xFC58, "ERROR_CODE_IOCTL_NANDFLAHSRESET_ERROR, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},         // FC58
     {0xFC59, "ERROR_CODE_BATTERY_VOLTAGE_IS_NOT_SATISFIED, Your battery is too low to update your target. Please charge target then try again."},   // FC59
     {0xFC5A, "ERROR_CODE_REMOUNT_UPDATE_PAR_AS_RO_ERROR, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},     // FC5A
-    
+   
+
     /* for USR tool {*/
     {0xFDA8, "EC_INI_FILE, There is a problem with this update package. A configuration file required for this update could not be run. Please verify the installer and try again."},    // FDA8
-    {0xFDA9, "EC_FAILED_OPEN_NAND_IMG, please make sure image exists"},            // FDA9
+   
     {0xFDAA, "EC_NAND_IMG_ILLEGAL, There is a problem with this update package. A image/DLL required for this update could not be run. Please verify the update package or contact your support personnel for assistance."},              // FDA9
     {0xFDAB, "EC_DEVICE_DOES_NOT_MATCH_IMG, There is a problem with this update package. The image may not match your target. Please verify the image and try again."},     // FDA9
-    {0xFDAC, "EC_REBOOT_TG_TO_UPG_MODE_FAILED, please retry again"},               // FDA9
-    {0xFDAD, "EC_CONNECT_UPG_MODE_FAILED, please retry again"},                    // FDA9
     
     {0xFDAF, "EC_GET_FILES_FROM_TG, There is a problem with file transfer. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                                              // FDAF
     {0xFDB0, "EC_UMOUNT_FAILED, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."},                                                  // FDB0
@@ -131,7 +133,7 @@ struct _error_code_info
     {0xFFE4, "ERROR_CODE_SEND_ERROR, A network error occurred while attempting to communicate with target. Please unplug and Reinsert USB cable and retry updating. If same error occurs again, please contact your support personnel for assistance."},                         // FFE4     
     {0xFFE5, "ERROR_CODE_RECV_EXCEPTION, A network error occurred while attempting to communicate with target. Please unplug and Reinsert USB cable and retry updating. If same error occurs again, please contact your support personnel for assistance."},                     // FFE5
     {0xFFE6, "ERROR_CODE_SOCKET_IS_NOT_CONNECTED, A network error occurred while attempting to communicate with target. Please unplug and Reinsert USB cable and retry updating. If same error occurs again, please contact your support personnel for assistance."},            // FFE6
-    
+     
     {0xFFF8, "ERROR_CHILD_EXECVP_CMD_ERROR_V1, The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance."}                // FFF8         
 };
 #endif

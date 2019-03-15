@@ -63,12 +63,8 @@
 #include "error_code.h"
 #include "devToolsRes.h"
 #include "iniparser.h"
-
-#ifdef MAINTAINMENT
-#include "for_end_user/devToolsUI_private.h"
-#else
 #include "devToolsUI_private.h"
-#endif
+
 /*  ===========================================================================
  *  Macro definitions
  *  ===========================================================================
@@ -248,53 +244,28 @@ enum _UI_ERROR_CODE{
 	EC_NO_PARTITION_SELECTED,
 	EC_WAIT_REBOOT_TIMEOUT
 };
-#ifdef MAINTAINMENT
+
 struct _error_code_info ui_error_code_info[] = {
-	{EC_INI_FILE_NOT_EXSIT,"EC_INI_FILE_NOT_EXSIT,Tool package broken,please re-install this tool."},
-	{EC_INI_FILE_SYNTAX_ERROR,"EC_INI_FILE_SYNTAX_ERROR,Tool package broken,please re-install this tool."},
-	{EC_INI_IP_NOT_SPECIFY,"EC_INI_IP_NOT_SPECIFY,Tool package broken,please re-install this tool."},
-	{EC_INI_IP_INVALID,"EC_INI_IP_INVALID,Tool package broken,please re-install this tool."},
-	{EC_INI_IP_TOO_MANY,"EC_INI_IP_TOO_MANY,Tool package broken,please re-install this tool."},
-	{EC_INI_IMAGE_NOT_SPECIFY,"EC_INI_IMAGE_NOT_SPECIFY,Tool package broken,please re-install this tool."},
-	{EC_INI_IMAGE_NOT_EXSIT,"EC_INI_IMAGE_NOT_EXSIT,Can't find Image,please check if it's exsit."},
-	{EC_INI_IMAGE_INVALID,"EC_INI_IMAGE_INVALID,Image broken,please use the complete image."},
-	{EC_INI_IMAGE_INCOMPATIBLE,"EC_INI_IMAGE_INCOMPATIBLE,Image incompatible,please use the right image for target."},
-	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"EC_INI_RESCUE_IMAGE_NOT_SPECIFY,Ini file error,rescue_image not specified."},
-	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"EC_INI_RESCUE_IMAGE_NOT_EXSIT,Ini file error,rescue_image not exsit."},
-	{EC_INI_RESCUE_IMAGE_INVALID,"EC_INI_RESCUE_IMAGE_INVALID,Ini file error,rescue_image invalid."},
-	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"EC_INI_RESCUE_IMAGE_INCOMPATIBLE,Ini file error,rescue_image incompatible."},
-	{EC_NO_PARTITION_SELECTED,"EC_NO_PARTITION_SELECTED,Error! No partition selected."},
-	{EC_WAIT_REBOOT_TIMEOUT,"EC_WAIT_REBOOT_TIMEOUT,Wait for reboot timeout,please try it again."},
+	{EC_INI_FILE_NOT_EXSIT,"Tool package broken,please re-install this tool."},
+	{EC_INI_FILE_SYNTAX_ERROR,"Tool package broken,please re-install this tool."},
+	{EC_INI_IP_NOT_SPECIFY,"Tool package broken,please re-install this tool."},
+	{EC_INI_IP_INVALID,"Tool package broken,please re-install this tool."},
+	{EC_INI_IP_TOO_MANY,"Tool package broken,please re-install this tool."},
+	{EC_INI_IMAGE_NOT_SPECIFY,"Tool package broken,please re-install this tool."},
+	{EC_INI_IMAGE_NOT_EXSIT,"Can't find Image,please check if it's exsit."},
+	{EC_INI_IMAGE_INVALID,"Image broken,please use the complete image."},
+	{EC_INI_IMAGE_INCOMPATIBLE,"Image incompatible,please use the right image for target."},
+	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"Ini file error,rescue_image not specified."},
+	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"Ini file error,rescue_image not exsit."},
+	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid."},
+	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible."},
+	{EC_NO_PARTITION_SELECTED,"Error! No partition selected."},
+	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again."},
 };
 /*info*/
 #define LINUX_INIT			"Preparing"
 
-#else
-struct _error_code_info ui_error_code_info[] = {
-	{EC_INI_FILE_NOT_EXSIT,"EC_INI_FILE_NOT_EXSIT"},
-	{EC_INI_FILE_SYNTAX_ERROR,"EC_INI_FILE_SYNTAX_ERROR"},
-	{EC_INI_IP_NOT_SPECIFY,"EC_INI_IP_NOT_SPECIFY"},
-	{EC_INI_IP_INVALID,"EC_INI_IP_INVALID"},
-	{EC_INI_IP_TOO_MANY,"EC_INI_IP_TOO_MANY"},
-	{EC_INI_IMAGE_NOT_SPECIFY,"EC_INI_IMAGE_NOT_SPECIFY"},
-	{EC_INI_IMAGE_NOT_EXSIT,"EC_INI_IMAGE_NOT_EXSIT"},
-	{EC_INI_IMAGE_INVALID,"EC_INI_IMAGE_INVALID"},
-	{EC_INI_IMAGE_INCOMPATIBLE,"EC_INI_IMAGE_INCOMPATIBLE"},
-	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"EC_INI_RESCUE_IMAGE_NOT_SPECIFY"},
-	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"EC_INI_RESCUE_IMAGE_NOT_EXSIT"},
-	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"EC_INI_RESCUE_IMAGE_INCOMPATIBLE"},
-	{EC_NO_PARTITION_SELECTED,"EC_NO_PARTITION_SELECTED"},
-	{EC_WAIT_REBOOT_TIMEOUT,"EC_WAIT_REBOOT_TIMEOUT"},
-};
-/*info*/
-#define LINUX_INIT			"Linux init"
-
-#endif
-#ifdef MAINTAINMENT
 const char *ec_not_found = "Error occurs,please try it again.If it happened again please contact your support personnel for assistance.";
-#else
-const char *ec_not_found = "error code not found";
-#endif
 
 static char partition_name[UNI_MAX_PARTITION][UNI_MAX_PARTITION_NAME_LEN];
 static int total_partition = 0;

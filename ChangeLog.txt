@@ -1,11 +1,11 @@
-1. fix m2 enableTelnet issue
-2. fix a issure that probably caused the first crash after download
-3. forbidden to close UI when processing
-4. add ui log file,log file print these information
-	a. ui controller postion
-	b. record input button click event
-	c. record device insert event
-	d. record interface argment before invoke
-	e. record result after download
-	f. dump gloab varibles
-5. modified progress information
+1. modified ini file description.
+2. update libupgrade.dll for burnpartition return 0 when verify failed. 
+3. update error information,errmsg is shorter,and error info more specific.
+4. update Tools Version from v00p02a to v01p00.
+5. display image short name replace full name.
+6. make user tool download force just warning user when upgrade user data
+failed.
+7. add error code appending in error information,and make error information
+can be copied into clipboard.
+8. modified spl download to run immidately when download button clicked.
+9. modified UI log file name from "devTool.log" to "devToolUI.log"

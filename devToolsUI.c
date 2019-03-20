@@ -75,7 +75,7 @@
 #define DEBUG_LOG			2
 
 #define DEBUG_MODE			DEBUG_LOG	//fixme if you want change the debug mode
-#define LOGFILE				"devTool.log"
+#define LOGFILE				"devToolUI.log"
 
 
 
@@ -246,26 +246,30 @@ enum _UI_ERROR_CODE{
 };
 
 struct _error_code_info ui_error_code_info[] = {
-	{EC_INI_FILE_NOT_EXSIT,"Tool package broken,please re-install this tool."},
-	{EC_INI_FILE_SYNTAX_ERROR,"Tool package broken,please re-install this tool."},
-	{EC_INI_IP_NOT_SPECIFY,"Tool package broken,please re-install this tool."},
-	{EC_INI_IP_INVALID,"Tool package broken,please re-install this tool."},
-	{EC_INI_IP_TOO_MANY,"Tool package broken,please re-install this tool."},
-	{EC_INI_IMAGE_NOT_SPECIFY,"Tool package broken,please re-install this tool."},
-	{EC_INI_IMAGE_NOT_EXSIT,"Can't find Image,please check if it's exsit."},
-	{EC_INI_IMAGE_INVALID,"Image broken,please use the complete image."},
-	{EC_INI_IMAGE_INCOMPATIBLE,"Image incompatible,please use the right image for target."},
-	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"Ini file error,rescue_image not specified."},
-	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"Ini file error,rescue_image not exsit."},
-	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid."},
-	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible."},
-	{EC_NO_PARTITION_SELECTED,"Error! No partition selected."},
-	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again."},
+	{EC_INI_FILE_NOT_EXSIT,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_FILE_SYNTAX_ERROR,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IP_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IP_INVALID,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IP_TOO_MANY,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IMAGE_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IMAGE_NOT_EXSIT,"Can't find Image,please check if it's exsit.","Can't find Image."},
+	{EC_INI_IMAGE_INVALID,"Image broken,please use the right image.","Image broken."},
+	{EC_INI_IMAGE_INCOMPATIBLE,"Image incompatible,please use the right image for target.","Image incompatible."},
+	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"Ini file error,rescue_image not specified.","Ini file error."},
+	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"Ini file error,rescue_image not exsit.","Ini file error."},
+	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid.","Ini file error."},
+	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible.","Ini file error."},
+	{EC_NO_PARTITION_SELECTED,"Error! No partition selected.","Error! No partition selected."},
+	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
 };
 /*info*/
 #define LINUX_INIT			"Preparing"
 
+#ifdef MAINTAINMENT
 const char *ec_not_found = "Error occurs,please try it again.If it happened again please contact your support personnel for assistance.";
+#else
+const char *ec_not_found = "Error code not found.";
+#endif
 
 static char partition_name[UNI_MAX_PARTITION][UNI_MAX_PARTITION_NAME_LEN];
 static int total_partition = 0;
@@ -399,7 +403,9 @@ static const char *dynamic_info = NULL;
 
 #define CLEAR_INFO()	do{SetWindowText(hwndInfo,"");SetWindowText(hwndIpInfo,"");}while(0)
 /************************General Handler Declaration********************/
+#define BROWSER_MAX		56
 static HWND    hwndInfo,hwndIpInfo,hwndProcessInfo,hwndStaticBrowser,hwndBtnBrowser,hwndBtnDown;
+static TCHAR	BrowserImage[256];
 
 /**********************Linux Handler Declaration*************************/
 static HWND    hwndLinPage;
@@ -879,6 +885,103 @@ static inline int get_abs_file_name(char *dest,const char *src)
 	
 	return TRUE;
 }
+/*str can't be null,and can't find NULL in str*/
+
+static int str_c(const char *str,const char ch,const char inc)
+{
+	int i = 0;
+	while(*str && *str != ch)
+	{
+		++i;
+		str += inc;
+	}
+	if(*str == 0)
+		return -1;
+	return i;
+}
+/*zip full name to short name
+*exmple: F:\dir1\dir2\dir3\dir4\dir5\dir6\dir7\xxx.bin -> F:\dir1\...\xxx.bin
+*the full name divide into 3 section, and it should be windows style directory
+*section 1: F:\dir1\
+*section 2: dir2\dir3\dir4\dir5\dir6\dir7\
+*section 3: xxx.bin
+*section 1 and section 3 should always in short name,it should find the longest but "dir lost" least path in section 2
+*		 replace into "..."
+*it save as many information as possible but limited in max_length 
+*@full_name : the full name that want to been compressed
+*@buff		: the buff that save the short name (should alloc space by user)
+*@length	: the max length that short name could be
+*@return value :	the buff of short name
+*/
+static const char *zip_full_name(const char *full_name,char *buff,int max_length)
+{
+	#define ZIP_STR		"..."
+	int i,min_bytes_need_zip;
+	const char *zip_start;
+	const char *zip_end;
+	const char *tmp_start,*tmp_end,*tmp;
+	int length;
+	if(buff == NULL)
+		return NULL;
+	min_bytes_need_zip = strlen(full_name) - max_length;
+	if(min_bytes_need_zip < 0)
+		return strcpy(buff,full_name);
+	/*get the start of zip string*/
+	zip_start = full_name;
+	while(*zip_start && *zip_start != '\\' ) ++zip_start;
+	++zip_start;
+	while(*zip_start && *zip_start != '\\') ++zip_start;
+	++zip_start;
+	/*get the end of zip string*/
+	zip_end = full_name + strlen(full_name);
+	while(zip_end != full_name && *zip_end != '\\') --zip_end;
+	
+	if(zip_end - zip_start <= strlen(ZIP_STR))//can't be zipped
+		return strcpy(buff,full_name);
+	/*get the max length path start address*/	
+	tmp_start = tmp = zip_start;
+	length = max_length = 0;
+	while(tmp <= zip_end)
+	{
+		length = str_c(tmp,'\\',1);
+		if(max_length < length)
+		{
+			max_length = length;
+			tmp_start = tmp;
+			tmp_end = tmp_start+length;
+		}
+		tmp += length +1;
+	}	
+	min_bytes_need_zip -= strlen(ZIP_STR);
+	int length1,length2;
+	while(min_bytes_need_zip >= tmp_end - tmp_start)
+	{
+		if(tmp_start - 2 < zip_start)
+			length1 = -1;
+		else
+			length1 = str_c(tmp_start-2,'\\',-1);
+		if(tmp_end + 1 >= zip_end)
+			length2 = -1;
+		else
+			length2 = str_c(tmp_end+1,'\\',1);
+		if(length1 <= 0 && length2 <=0 )
+			break;
+		if(length1 > length2)
+			tmp_start -= length1+1;
+		else
+			tmp_end += length2+1;		
+	}
+	/*copy new string to buff*/
+	tmp = full_name;
+	i = 0;
+	while(tmp != tmp_start) buff[i++] = *tmp++;
+	strcpy(&buff[i],ZIP_STR);
+	i += strlen(ZIP_STR);
+	tmp = tmp_end;
+	while(*tmp) buff[i++] = *tmp++;
+	buff[i] = 0;
+	return buff;
+}
 /*just replace all '\' to '/' */
 static inline char *dir_win32_to_linux(char *dir)
 {
@@ -1105,8 +1208,6 @@ static inline void DestoryProgressBar(void)
     return;
 }
 
-
-
 static char *get_error_info(unsigned short ec)
 {
     int i;	
@@ -1127,8 +1228,27 @@ static char *get_error_info(unsigned short ec)
 	/*not found*/
     return ec_not_found;
 }
+static char *get_short_info(unsigned short ec)
+{
+	int i;	
+	/*first find it in ui_error_code_info table*/
+	for(i = 0; i < (sizeof(ui_error_code_info)/sizeof(ui_error_code_info[0]));i++)
+	{
+		if(ec == ui_error_code_info[i].ec)
+			return ui_error_code_info[i].short_string;
+	}
+	/*ec is not in ui_error_code_info table,then find it in error_code_info table*/
+    for (i=0; i<(sizeof(error_code_info)/sizeof(error_code_info[0])); i++)
+    {
+		if (error_code_info[i].ec == ec)
+        {
+            return (char *)error_code_info[i].short_string;
+        }
+    }
+	/*not found*/
+    return ec_not_found;
+}
 
-/*{*/
 static const GUID GUID_DEVCLASS_AD6900_SPL = {0xb35924d6UL, 0x3e16, 0x4a9e, {0x97, 0x82, 0x55, 0x24, 0xa4, 0xb7, 0x9b, 0xac}};
 static const GUID GUID_DEVCLASS_AD6900_MFG = {0xb35924d6UL, 0x3e16, 0x4a9e, {0x97, 0x82, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66}};
 static const GUID GUID_DEVCLASS_AD6900_LAN = {0xad498944UL, 0x762f, 0x11d0, {0x8d, 0xcb, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c}};
@@ -1253,13 +1373,13 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		{
 			dump_time();
 			log_print("%s quit\n",__func__);
-			#ifdef MAINTAINMENT
+			//#ifdef MAINTAINMENT
 			if(processing_dynamic_info == TRUE)
 			{
 				processing_dynamic_info = FALSE;
 				StopDynamicInfo();
 			}
-			#endif
+			//#endif
 			break;
 		}
 		
@@ -1269,7 +1389,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		{
 			dump_time();
 			log_print("progress_reply_status_get return errcode : 0x%04x\n",retval);
-			break;
+			continue;
 		}		
 		//log_print("index = %d, percent = %d, status = %d\n",index,percent,status);
 		if(!(last_index == index && last_percent == percent && last_status == status))//stage index or percent changed
@@ -1305,7 +1425,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 				partition = "";
 			if(percent != 0)
 			{
-				snprintf(text,256,"%s %s\nPercetage:[%d%%]",stage[status],partition,percent);
+				snprintf(text,256,"%s %s\r\nPercetage:[%d%%]",stage[status],partition,percent);
 			}
 			else
 			{
@@ -1362,8 +1482,6 @@ static DWORD WINAPI BackGroundThread(LPVOID lpParam)
     return 0;
 }
 
-
-
 static BOOL StartThread(void)
 {
     g_hBackGround = CreateThread(NULL, 0, BackGroundThread, NULL, 0, NULL);
@@ -1379,8 +1497,6 @@ static BOOL StartThread(void)
 /*******************************************************/
 /*                 helpers                             */
 /*******************************************************/
-/*{*/
-
 
 /*
  *  Name:     GetFileName
@@ -1479,7 +1595,6 @@ static BOOL InitApplication( void )
 	}
     return TRUE;
 }
-
 
 /*
  *  Name:     InitLinuxWindow
@@ -1638,8 +1753,8 @@ static void InitLinuxWindow(void)
     console_print("hwndLinStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
 
-    hwndLinStaticInfo = CreateWindow( TEXT("static"), "",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+    hwndLinStaticInfo = CreateWindow( TEXT("edit"), "",
+            WS_CHILD | WS_VISIBLE | ES_LEFT | ES_READONLY | ES_AUTOVSCROLL | ES_MULTILINE,
             relative_x, relative_y,
             STATIC_WIDTH, HEIGHT_CONTROL*2,
             hwndLinPage, NULL,
@@ -1931,10 +2046,10 @@ static void InitSPLWindow(void)
     console_print("hwndSPLStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
 
-    hwndSPLStaticInfo = CreateWindow( TEXT("static"), "",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+    hwndSPLStaticInfo = CreateWindow( TEXT("edit"), "",
+            WS_CHILD | WS_VISIBLE | ES_LEFT | ES_READONLY | ES_AUTOVSCROLL | ES_MULTILINE,
             relative_x, relative_y,
-            STATIC_WIDTH, HEIGHT_CONTROL+10,
+            STATIC_WIDTH, HEIGHT_CONTROL*2,
             hwndSPLPage, NULL,
             hInst, NULL);
 
@@ -2156,10 +2271,10 @@ static void InitMFGWindow(void)
     console_print("hwndMFGStaticInfo's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, STATIC_WIDTH, HEIGHT_CONTROL+10);
 
-    hwndMFGStaticInfo = CreateWindow( TEXT("static"), "",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+    hwndMFGStaticInfo = CreateWindow( TEXT("edit"), "",
+            WS_CHILD | WS_VISIBLE | ES_LEFT | ES_READONLY | ES_AUTOVSCROLL | ES_MULTILINE,
             relative_x, relative_y,
-            STATIC_WIDTH, HEIGHT_CONTROL+10,
+            STATIC_WIDTH, HEIGHT_CONTROL*2,
             hwndMFGPage, NULL,
             hInst, NULL);
 
@@ -2413,9 +2528,9 @@ static int linux_init(const char *ip)
 	int retval = -1;
 	char image[256];
 #ifdef MAINTAINMENT	
-	strcpy(image,ini_file_info.name_of_image);
+	strncpy(image,ini_file_info.name_of_image,256);
 #else
-	GetWindowText(hwndStaticBrowser,image,256);
+	strncpy(image,BrowserImage,256);
 #endif
 	
 	image_length = get_file_len(image);
@@ -2480,6 +2595,7 @@ static int linux_download(void)
 				listening_on = IS_LISTENING_ON_NOTHING;
 				snprintf(error_info,ERROR_INFO_MAX,"Waiting for reboot timeout.");
 				snprintf(error_msg,ERROR_INFO_MAX,"Waiting for reboot timeout.");
+				error_code = EC_WAIT_REBOOT_TIMEOUT;
 				goto linux_download_error;
 			}			
 			ResetEvent(g_lan_event);
@@ -2517,29 +2633,20 @@ static int linux_download(void)
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
 		{		
-			if(IDYES == MessageBox(hwndMain,"Upgrade Failed,Force to download?(Warning:that will wipe data of your device)",szAppName,MB_YESNO|MB_ICONWARNING))
-			{
-				dump_time();
-				log_print("error code EC_USERDATA_UPGRADE_FAIL catched,user select YES.\n");
-				/*Select Yes,force to download by invoke burnpartition*/
-				transfer_start();			
-			#ifdef U3_LIB
-				log_print("burnpartition() : partition_selected = 0x%04x.\n",1<<5);
-				retval = burnpartition(1<<5);//userdata
-			#else
-				log_print("burnpartition() : partition_selected = 0x%04x.\n",0x03E0);
-				retval = burnpartition(0x03E0);
-			#endif
-				transfer_complete();
-			}
-			else
-			{
-				dump_time();
-				log_print("error code EC_USERDATA_UPGRADE_FAIL catched,user select NO.\n");
-				/*Select No,reboot this cpu,then do next cpu*/
-				RebootTarget(ip);
-				retval = 0;
-			}	
+			MessageBox(hwndMain,"Upgrade user data failed,Force to download(Notice:that will wipe user data).",szAppName,MB_ICONINFORMATION);
+			dump_time();
+			log_print("error code EC_USERDATA_UPGRADE_FAIL catched,Force to download.\n");
+			/*Select Yes,force to download by invoke burnpartition*/
+			transfer_start();			
+		#ifdef U3_LIB
+			log_print("burnpartition() : partition_selected = 0x%04x.\n",1<<5);
+			retval = burnpartition(1<<5);//userdata
+		#else
+			log_print("burnpartition() : partition_selected = 0x%04x.\n",0x03E0);
+			retval = burnpartition(0x03E0);
+		#endif
+			transfer_complete();	
+			
 		}
 		
 #endif
@@ -2599,6 +2706,12 @@ static int spl_download(void)
 	}
 	if(partition_selected == 0)
 		return 0;
+	/*waiting for Linux device*/
+	
+	SetDynamicInfo("Waiting for linux device");
+	Sleep(2000);
+	StopDynamicInfo();
+	
 	retval = linux_download();	
 	if(retval != 0)
 		goto spl_download_error;	
@@ -2611,7 +2724,7 @@ static BOOL mfg_init(void)
 	int retval = -1;
 	char image[256];	
 	
-	GetWindowText(hwndStaticBrowser,image,256);
+	strncpy(image,BrowserImage,256);
 	
 	image_length = get_file_len(image);
 	if(image_length <= 0)
@@ -2751,10 +2864,11 @@ static BOOL OnBtnBrowser(void)
 {
 	EnableWindow(hwndTab,FALSE);
 	char image[256];
-	if(GetFileName(image,256) == TRUE)
-	{			
+	if(GetFileName(BrowserImage,256) == TRUE)
+	{
+		zip_full_name(BrowserImage,image,BROWSER_MAX);
 		SetWindowText(hwndStaticBrowser,image);
-		if(get_image_info(image) == FALSE)
+		if(get_image_info(BrowserImage) == FALSE)
 		{
 #ifdef DEVELOPMENT
 			SendMessage(hwndMain,WM_DESTROY_PARTITION_LIST,0,0);			
@@ -2843,187 +2957,12 @@ static int OnBtnEnableTelnetClick(void)
 }
 
 static int OnBtnFileDownload(void)
-{
-	char file_for_pc[MAX_PATH];
-	char file_for_target[MAX_PATH];
-	int file_len = 0;
-	int retval = -1;
-	FILE *fp = NULL;
-	unsigned char *buff = NULL;
-	GetWindowText(hwndFdEditDestFile,file_for_target,MAX_PATH);
-	if(file_for_target[0] == 0)
-	{
-		SetWindowText(hwndFdNotify,"Dest Path can't be empty.");
-		ERROR_MESSAGE("Dest Path can't be empty.");
-		return 0 ;
-	}
-	GetWindowText(hwndFdStaticSrcFile,file_for_pc,MAX_PATH);
-	get_abs_file_name(file_for_target,file_for_pc);
-	log_print("file_for_target = %s\n",file_for_target);
-	log_print("file_for_pc = %s\n",file_for_pc);
-	/*Disable Main Window and prepare to download*/
-	EnableWindow(hwndTab,FALSE);
-	SetWindowText(hwndFdNotify,"Init network..");
-	if(linux_init(ini_file_info.ip[0]) == FALSE)
-	{
-		EnableWindow(hwndTab,TRUE);
-		SetWindowText(hwndFdNotify,"Init network error.");
-		return 0;
-	}
-	SetWindowText(hwndFdNotify,"Init network success.");
-	
-	SetWindowText(hwndFdNotify,"Download...");
-#ifdef U3_LIB
-	retval = file_download(ini_file_info.ip[0],file_for_pc,file_for_target);
-#else
-	/*read file into buff and call download_file*/		
-	
-	buff = (unsigned char*)malloc(MAX_BUFF_LEN);
-	if(buff == NULL)
-	{
-		ERROR_MESSAGE("Out of memory.");
-		goto malloc_error;
-	}
-	fp = fopen(file_for_pc,"rb");
-	if(fp == NULL)
-	{
-		ERROR_MESSAGE("%s can't open.",file_for_pc);
-		goto open_error;
-	}
-	fseek(fp,0,SEEK_END);
-	file_len = ftell(fp);
-	fseek(fp,0,SEEK_SET);
-	if(file_len != fread(buff,1,file_len,fp))
-	{
-		ERROR_MESSAGE("%s read error.",file_for_pc);
-		goto read_error;
-	}
-	log_print("before download_file\n");
-	log_print("file_for_target:%s\n",file_for_target);	
-		
-	retval = download_file(buff,file_len,file_for_target);
-	log_print("retval = %d\n",retval);
-	log_print("after download_file\n");	
-#endif
-	if(retval != 0)
-	{
-		SetWindowText(hwndFdNotify,"Download error.");
-		ERROR_MESSAGE("Download error:%s",get_error_info(retval));
-		goto EXIT;
-	}
-	SetWindowText(hwndFdNotify,"Download success.");
-	
-EXIT:/*exit for download and upload*/
-#ifndef U3_LIB
-download_error:		
-read_error:
-	if(fp)
-	{
-		fclose(fp);
-		fp = NULL;
-	}
-open_error:
-	if(buff)
-	{
-		free(buff);
-		buff = NULL;
-	}
-malloc_error:
-#endif
-	EnableWindow(hwndTab,TRUE);
+{	
 	return 0;
 }
 
 static int OnBtnFileUpload(void)
-{
-	char file_for_pc[MAX_PATH];
-	char file_for_target[MAX_PATH];
-	int file_len = 0;
-	int retval = -1;
-	FILE *fp = NULL;
-	unsigned char *buff = NULL;
-	
-	GetWindowText(hwndFuEditSrcFile,file_for_target,MAX_PATH);
-	if(file_for_target[0] == 0)
-	{
-		SetWindowText(hwndFuNotify,"Src File can't be empty.");
-		ERROR_MESSAGE("Src File can't be empty.");
-		return 0;
-	}
-	log_print("file_for_target = %s\n",file_for_target);
-	log_print("file_for_pc = %s\n",file_for_pc);
-	/*Disable Main Window and prepare to upload*/
-	
-	GetWindowText(hwndFuStaticDestFile,file_for_pc,MAX_PATH);
-	
-	EnableWindow(hwndTab,FALSE);
-	SetWindowText(hwndFuNotify,"Init network..");
-	if(linux_init(ini_file_info.ip[0]) == FALSE)
-	{
-		EnableWindow(hwndTab,TRUE);
-		SetWindowText(hwndFuNotify,"Init network error.");
-		return 0;
-	}
-	SetWindowText(hwndFuNotify,"Upload...");
-#ifdef U3_LIB
-	retval = file_upload(ini_file_info.ip[0],file_for_pc,file_for_target);
-#else
-	/*read file into buff and call download_file*/			
-	
-	buff = (unsigned char*)malloc(MAX_BUFF_LEN);
-	if(buff == NULL)
-	{
-		ERROR_MESSAGE("Out of memory.");
-		goto malloc_error;
-	}	
-	
-	retval = upload_file(buff,&file_len,file_for_target);
-	
-#endif
-	if(retval != 0)
-	{
-		SetWindowText(hwndFuNotify,"Upload error.");
-		ERROR_MESSAGE("Upload error:%s",get_error_info(retval));
-		goto EXIT;
-	}
-	log_print("recevied file_len = %d\n",file_len);
-#ifndef U3_LIB
-	/*then write buff into current files*/		
-	fp = fopen(file_for_pc,"wb+");
-	if(fp == NULL)
-	{
-		SetWindowText(hwndFuNotify,"Upload error.");
-		ERROR_MESSAGE("%s can't open.",file_for_pc);
-		goto open_error;
-	}
-	
-	if(file_len != fwrite(buff,1,file_len,fp))
-	{
-		SetWindowText(hwndFuNotify,"Upload error.");
-		ERROR_MESSAGE("%s write error.",file_for_pc);
-		goto write_error;
-	}
-#endif
-	SetWindowText(hwndFuNotify,"Upload success.");
-	
-EXIT:/*exit for download and upload*/
-#ifndef U3_LIB
-download_error:
-write_error:
-	if(fp)
-	{
-		fclose(fp);
-		fp = NULL;
-	}
-open_error:
-	if(buff)
-	{
-		free(buff);
-		buff = NULL;
-	}
-malloc_error:
-#endif
-	EnableWindow(hwndTab,TRUE);
+{	
 	return 0;
 }
 /*********************File Transfer Button Process***********************/
@@ -3178,12 +3117,14 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 		{
 			SendMessage(hwndMain,WM_ERROR,-1,0);
 			return TRUE;
-		}
-		update_ui_resources(FALSE);
-		listening_on = IS_LISTENING_ON_SPL;
-		SetDynamicInfo("Waiting for SPL device");
+		}		
+		g_background_func = spl_download;
+		g_complete_func = spl_download_complete_cb;
+		g_processing = TRUE;
+		update_ui_resources(FALSE);		
 		dump_download_varibles();
-		log_print("Waiting for SPL device..\n");
+		log_print("Waiting for linux download..\n");		
+		WAKE_THREAD_UP();		
 	}
 	else if(hwnd == hwndSPLBtnBrowser)
 	{
@@ -3485,16 +3426,17 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		}
 		error_info[0] = 0;
 		error_msg[0] = 0;
-#else
-		const char *info;
+#else		
 		/*not use error_info and error_msg buffer any more,just use error_code(for UI),wParam(for lib) and error code table to display error message*/
 		if(error_code == OK && wParam != -1)
 			error_code = wParam;		
-		info = get_error_info(error_code);
-		log_print("Error : error code is 0x%04x.\n",error_code);
-		log_print("error_info : %s\n",info);
-		SetWindowText(hwndInfo,info);
-		ERROR_MESSAGE(info);		
+		snprintf(error_info,ERROR_INFO_MAX,"%s(0x%04X)",get_error_info(error_code),error_code);
+		strncpy(error_msg,get_short_info(error_code),ERROR_INFO_MAX);
+		log_print("Error : error code is 0x%04X.\n",error_code);
+		log_print("error_info : %s\n",error_info);
+		log_print("error_msg  : %s\n",error_msg);
+		SetWindowText(hwndInfo,error_info);
+		ERROR_MESSAGE(error_msg);		
 #endif//DEVELOPMENT
 		error_code = OK;
 		break;		

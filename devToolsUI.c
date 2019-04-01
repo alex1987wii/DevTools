@@ -46,7 +46,7 @@
 /* _WIN32_IE defines the minimum Internet Explorer version required by the program.
    Unication Dev Tools need Internet Explorer 5.01(0x0501) and the followings  */
 #define _WIN32_IE 0x0501
-
+#include <stdint.h>
 #include <windows.h>
 #include <windowsx.h>
 #include <Commctrl.h>
@@ -306,7 +306,11 @@ PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
 
 /**********************************************************************/
 #if defined(DEVELOPMENT)
+#ifdef LIMITED
+#define APP_TITLE		   "Unication Limited Tools"
+#else
 #define APP_TITLE          "Unication Dev Tools"
+#endif //LIMITED
 static const char *ini_file = "for_user_file.ini";/*select partition by check checkbox*/
 static int burn_mode = SELECT_LINUX_PROGRAMMING;
 #elif defined(MAINTAINMENT)
@@ -1702,7 +1706,7 @@ static void InitLinuxWindow(void)
     relative_x += H_GAPS * 2;
     relative_y += V_GAPS + HEIGHT_TAG;
 #ifdef MAINTAINMENT
-	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade/Download Button and wait until it finished.\n3. If any error occurs during updating/downloading,please reconnect device and re-open this tool to try it again.\n4.Don't pull off the USB cable during process.");
+	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade Button and wait until it finished.\n3. If any error occurs during upgrading,please reconnect device and re-open this tool to try it again.\n4.Don't pull off the USB cable during process.\n5.Target will reboot when upgrade complete.");
 #else
 	readme = project_target;
 #endif
@@ -1810,17 +1814,7 @@ static void InitLinuxWindow(void)
 	
 	relative_x += WIDTH_EDIT + X_MARGIN;
 	relative_y += HEIGHT_CONTROL + Y_MARGIN;
-#else
-	hwndCheckBoxUserdata = CreateWindow( TEXT("button"), "Keep User Data",
-            WS_CHILD | WS_VISIBLE | BS_CHECKBOX,
-            relative_x, relative_y,
-            WIDTH_BUTTON*2, HEIGHT_CONTROL,
-            hwndLinPage, NULL,
-            hInst, NULL);
-    relative_y += HEIGHT_CONTROL;
-	SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default checked
-	
-    relative_y += HEIGHT_CONTROL + 2*Y_MARGIN;
+
 #endif
 
 #if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
@@ -1918,6 +1912,16 @@ static void InitLinuxWindow(void)
 
     debug_positions(hwndBtnEnableTelnet, "hwndBtnEnableTelnet");
 	relative_y += HEIGHT_CONTROL + V_GAPS*2;
+#elif defined MAINTAINMENT
+	hwndCheckBoxUserdata = CreateWindow( TEXT("button"), "Keep User Data",
+            WS_CHILD | WS_VISIBLE | BS_CHECKBOX,
+            relative_x-4*X_MARGIN, relative_y,
+			WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5,
+            //WIDTH_BUTTON*2, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+    relative_y += HEIGHT_CONTROL-5 + V_GAPS;
+	SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default checked
 #endif
 #ifndef U3_LIB	
     console_print("hwndCheckBoxSkipBatCheck's dim: x=%d, y=%d, width=%d, height=%d\n",

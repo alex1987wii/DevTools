@@ -1,11 +1,4 @@
-1. modified ini file description.
-2. update libupgrade.dll for burnpartition return 0 when verify failed. 
-3. update error information,errmsg is shorter,and error info more specific.
-4. update Tools Version from v00p02a to v01p00.
-5. display image short name replace full name.
-6. make user tool download force just warning user when upgrade user data
-failed.
-7. add error code appending in error information,and make error information
-can be copied into clipboard.
-8. modified spl download to run immidately when download button clicked.
-9. modified UI log file name from "devTool.log" to "devToolUI.log"
+1. modified Version from v01p00 to v01p01a
+2. (for end user)move controller 'keep user data' under download button
+3. (for end user)modify information for user tools，delete ‘download’ relative
+word,and add one notice:target will reboot after download。

@@ -889,103 +889,7 @@ static inline int get_abs_file_name(char *dest,const char *src)
 	
 	return TRUE;
 }
-/*str can't be null,and can't find NULL in str*/
 
-static int str_c(const char *str,const char ch,const char inc)
-{
-	int i = 0;
-	while(*str && *str != ch)
-	{
-		++i;
-		str += inc;
-	}
-	if(*str == 0)
-		return -1;
-	return i;
-}
-/*zip full name to short name
-*exmple: F:\dir1\dir2\dir3\dir4\dir5\dir6\dir7\xxx.bin -> F:\dir1\...\xxx.bin
-*the full name divide into 3 section, and it should be windows style directory
-*section 1: F:\dir1\
-*section 2: dir2\dir3\dir4\dir5\dir6\dir7\
-*section 3: xxx.bin
-*section 1 and section 3 should always in short name,it should find the longest but "dir lost" least path in section 2
-*		 replace into "..."
-*it save as many information as possible but limited in max_length 
-*@full_name : the full name that want to been compressed
-*@buff		: the buff that save the short name (should alloc space by user)
-*@length	: the max length that short name could be
-*@return value :	the buff of short name
-*/
-static const char *zip_full_name(const char *full_name,char *buff,int max_length)
-{
-	#define ZIP_STR		"..."
-	int i,min_bytes_need_zip;
-	const char *zip_start;
-	const char *zip_end;
-	const char *tmp_start,*tmp_end,*tmp;
-	int length;
-	if(buff == NULL)
-		return NULL;
-	min_bytes_need_zip = strlen(full_name) - max_length;
-	if(min_bytes_need_zip < 0)
-		return strcpy(buff,full_name);
-	/*get the start of zip string*/
-	zip_start = full_name;
-	while(*zip_start && *zip_start != '\\' ) ++zip_start;
-	++zip_start;
-	while(*zip_start && *zip_start != '\\') ++zip_start;
-	++zip_start;
-	/*get the end of zip string*/
-	zip_end = full_name + strlen(full_name);
-	while(zip_end != full_name && *zip_end != '\\') --zip_end;
-	
-	if(zip_end - zip_start <= strlen(ZIP_STR))//can't be zipped
-		return strcpy(buff,full_name);
-	/*get the max length path start address*/	
-	tmp_start = tmp = zip_start;
-	length = max_length = 0;
-	while(tmp <= zip_end)
-	{
-		length = str_c(tmp,'\\',1);
-		if(max_length < length)
-		{
-			max_length = length;
-			tmp_start = tmp;
-			tmp_end = tmp_start+length;
-		}
-		tmp += length +1;
-	}	
-	min_bytes_need_zip -= strlen(ZIP_STR);
-	int length1,length2;
-	while(min_bytes_need_zip >= tmp_end - tmp_start)
-	{
-		if(tmp_start - 2 < zip_start)
-			length1 = -1;
-		else
-			length1 = str_c(tmp_start-2,'\\',-1);
-		if(tmp_end + 1 >= zip_end)
-			length2 = -1;
-		else
-			length2 = str_c(tmp_end+1,'\\',1);
-		if(length1 <= 0 && length2 <=0 )
-			break;
-		if(length1 > length2)
-			tmp_start -= length1+1;
-		else
-			tmp_end += length2+1;		
-	}
-	/*copy new string to buff*/
-	tmp = full_name;
-	i = 0;
-	while(tmp != tmp_start) buff[i++] = *tmp++;
-	strcpy(&buff[i],ZIP_STR);
-	i += strlen(ZIP_STR);
-	tmp = tmp_end;
-	while(*tmp) buff[i++] = *tmp++;
-	buff[i] = 0;
-	return buff;
-}
 /*just replace all '\' to '/' */
 static inline char *dir_win32_to_linux(char *dir)
 {
@@ -1803,8 +1707,8 @@ static void InitLinuxWindow(void)
 	console_print("hwndLinStaticBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_EDIT, HEIGHT_CONTROL);
 
-    hwndLinStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("static"), NULL,
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+    hwndLinStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("edit"), NULL,
+            WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL | ES_READONLY,
             relative_x, relative_y,
             WIDTH_EDIT, HEIGHT_CONTROL,
             hwndLinPage, NULL,
@@ -1928,7 +1832,11 @@ static void InitLinuxWindow(void)
             relative_x-4*X_MARGIN, relative_y, WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5);
 
     hwndCheckBoxSkipBatCheck = CreateWindow(TEXT("button"), TEXT("Skip battery check"),
-            WS_CHILD | WS_VISIBLE  | BS_AUTOCHECKBOX,
+            WS_CHILD | 
+	#ifdef DEVELOPMENT
+			WS_VISIBLE  | 
+	#endif
+			BS_AUTOCHECKBOX,
             relative_x-4*X_MARGIN, relative_y,
             WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5,
             hwndLinPage, NULL,
@@ -2095,8 +2003,8 @@ static void InitSPLWindow(void)
 	console_print("hwndSPLStaticBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_EDIT, HEIGHT_CONTROL);
 
-    hwndSPLStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("static"), NULL,
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+    hwndSPLStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("edit"), NULL,
+            WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL | ES_READONLY,
             relative_x, relative_y,
             WIDTH_EDIT, HEIGHT_CONTROL,
             hwndSPLPage, NULL,
@@ -2320,8 +2228,8 @@ static void InitMFGWindow(void)
 	console_print("hwndMFGStaticBrowser's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_EDIT, HEIGHT_CONTROL);
 
-    hwndMFGStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("static"), NULL,
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+    hwndMFGStaticBrowser = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("edit"), NULL,
+			WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL | ES_READONLY,
             relative_x, relative_y,
             WIDTH_EDIT, HEIGHT_CONTROL,
             hwndMFGPage, NULL,
@@ -2553,7 +2461,8 @@ static int linux_init(const char *ip)
 	log_print("WinUpgradeLibInit() : image = %s,image_length = %d,ip = %s,battery_check_sign = %d.\n",
 		image,image_length,ip,battery_check_sign);
 	retval = WinUpgradeLibInit(image,image_length,ip,battery_check_sign);
-		
+	dump_time();
+	log_print("retval = %d\n",retval);	
 	if(retval < 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Linux init error.");
@@ -2629,11 +2538,12 @@ static int linux_download(void)
 #elif defined(PRODUCTION)
 		/*burn all partition*/
 		log_print("burnpartition() : partition_selected = all partition.\n");
-		retval = burnpartition(((1<<total_partition)-1)/*&~(1<<3)*/);
+		retval = burnpartition(partition_selected);
 #endif		
 		
 		transfer_complete();
-		
+		dump_time();
+		log_print("retval = %d\n",retval);	
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
 		{		
@@ -2701,7 +2611,8 @@ static int spl_download(void)
 	retval = burnSPL(ini_file_info.name_of_rescue_image);
 	
 	transfer_complete();
-	
+	dump_time();
+	log_print("retval = %d\n",retval);	
 	if(retval != 0)
 	{		
 		snprintf(error_info,ERROR_INFO_MAX,"SPL download error.");		
@@ -2738,9 +2649,10 @@ static BOOL mfg_init(void)
 		return FALSE;
 	}
 	dump_time();
-	log_print("burnMFGinit() : rescue_image = %s\n",image);
+	log_print("burnMFGinit() : image = %s\n",image);
 	retval = burnMFGinit(image);
-
+	dump_time();
+	log_print("retval = %d\n",retval);	
 	if(retval != 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"MFG init error");
@@ -2768,7 +2680,8 @@ static int mfg_download(void)
 	transfer_start();
 	retval = burnMFG();
 	transfer_complete();
-	
+	dump_time();
+	log_print("retval = %d\n",retval);	
 	if(retval != 0)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"MFG download error.");
@@ -2866,12 +2779,10 @@ static void mfg_download_complete_cb(int retval,void *private_data)
 /*********************Nand Programing Button Process***********************/
 static BOOL OnBtnBrowser(void)
 {
-	EnableWindow(hwndTab,FALSE);
-	char image[256];
+	EnableWindow(hwndTab,FALSE);	
 	if(GetFileName(BrowserImage,256) == TRUE)
-	{
-		zip_full_name(BrowserImage,image,BROWSER_MAX);
-		SetWindowText(hwndStaticBrowser,image);
+	{		
+		SetWindowText(hwndStaticBrowser,BrowserImage);
 		if(get_image_info(BrowserImage) == FALSE)
 		{
 #ifdef DEVELOPMENT
@@ -3041,6 +2952,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		dump_time();
 		log_print("button LinBtnDown clicked.\n");
 		CLEAR_INFO();
+
 #ifndef MAINTAINMENT
 		int i;
 		partition_selected = 0;
@@ -3167,7 +3079,9 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 			log_print("No partition select.\n");
 			ERROR_MESSAGE("No partition select.");
 			return TRUE;
-		}		
+		}
+#elif defined PRODUCTION
+		partition_selected = ((1<<total_partition)-1);
 #endif
 		if(check_ini() == FALSE)
 		{
@@ -3186,10 +3100,10 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		dump_download_varibles();
 		log_print("Waiting for MFG device..\n");
 		
-#ifdef PRODUCTION
+#ifdef PRODUCTION		
 		ShowWindow(hwndMFGBtnDown,FALSE);		
 		EnableWindow(hwndMFGBtnStop,TRUE);
-		ShowWindow(hwndMFGBtnStop,TRUE);
+		ShowWindow(hwndMFGBtnStop,TRUE);		
 #endif		
 	}
 	else if(hwnd == hwndMFGBtnBrowser)
@@ -3365,7 +3279,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					listening_on = IS_LISTENING_ON_NOTHING;
 					g_background_func = spl_download;
 					g_complete_func = spl_download_complete_cb;
-					g_processing = TRUE;
+					g_processing = TRUE;					
 					dump_time();
 					log_print("SPL device inserted.\n");
 					WAKE_THREAD_UP();
@@ -3380,6 +3294,11 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					g_background_func = mfg_download;
 					g_complete_func = mfg_download_complete_cb;
 					g_processing = TRUE;
+					if(g_on_batch == FALSE)
+					{
+						ShowWindow(hwndMFGBtnDown,TRUE);
+						ShowWindow(hwndMFGBtnStop,FALSE);
+					}
 					dump_time();
 					log_print("mfg device inserted.\n");
 					WAKE_THREAD_UP();					

@@ -1,4 +1,5 @@
-1. modified Version from v01p00 to v01p01a
-2. (for end user)move controller 'keep user data' under download button
-3. (for end user)modify information for user tools，delete ‘download’ relative
-word,and add one notice:target will reboot after download。
+1. Fix PRODUCTION tools issue
+2. Replace Image controller from "static" to "edit" avoid some issue
+3. delete "skip battery check" contoller for MAINTAINMENT tools
+4. Modified log file format,add interface retval tracking.
+5. Update U3 lib

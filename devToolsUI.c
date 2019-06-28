@@ -74,7 +74,7 @@
 #define DEBUG_CONSOLE		1
 #define DEBUG_LOG			2
 
-#define DEBUG_MODE			DEBUG_LOG	//fixme if you want change the debug mode
+#define DEBUG_MODE			DEBUG_CONSOLE	//fixme if you want change the debug mode
 #define LOGFILE				"devToolUI.log"
 
 
@@ -135,7 +135,7 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #if defined LIMITED
 #define DEV_TOOLS_NUMBER        1  
 #else
-#define DEV_TOOLS_NUMBER        3           /* Unication dev tools have three utilities */
+#define DEV_TOOLS_NUMBER        4           /* Unication dev tools have three utilities */
 #endif
 #elif defined MAINTAINMENT
 #define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
@@ -291,18 +291,21 @@ const char *ip_addr[IP_MAX] = {
 #define SELECT_LINUX_PROGRAMMING		0
 #define SELECT_SPL_PROGRAMMING			1
 #define SELECT_MFG_PROGRAMMING			2
-#define SELECT_FILE_TRANSFER			3
+#define SELECT_UTILS					3
 
 
 /* Unication UniDevTools lines buffer definitions */
 #if defined DEVELOPMENT
-PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", " For SPL ", " For MFG ","File Transfer",};
+PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", " For SPL ", " For MFG ","Utils"};
 #elif defined MAINTAINMENT
 PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Upgrade"};
 #elif defined PRODUCTION
 PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
 #endif
 
+#define PC_CHANGEIP_SCRIPT		"./script/changip.sh" //need to change
+#define TARGET_CHANGEIP_SCRIPT	"/tmp/changeip.sh"
+#define TARGET_DSP_IMAGE		"/root/dsp_image.bin"
 
 /**********************************************************************/
 #if defined(DEVELOPMENT)
@@ -457,6 +460,12 @@ static HWND    hwndCheckBoxBatch;
 static HWND	   hwndFileTransferPage,hwndFtNotice;
 static HWND    hwndFdGroupBox,hwndFdSrcFile,hwndFdDestFile,hwndFdStaticSrcFile,hwndFdEditDestFile,hwndFdButtonBrowse,hwndFdButtonDownload,hwndFdNotify;
 static HWND    hwndFuGroupBox,hwndFuSrcFile,hwndFuDestFile,hwndFuEditSrcFile,hwndFuStaticDestFile,hwndFuButtonBrowse,hwndFuButtonUpload,hwndFuNotify;
+
+/**********************Utils Handler Declaration*************************/
+static HWND    hwndUtilsPage, hwndGroupChangeIp, hwndGroupDspImage, hwndUtilsInfo;
+static HWND    hwndStaticDeviceIp, hwndStaticChangetoIp, hwndStaticDspImage;
+static HWND    hwndCommDeviceIp, hwndCommChangetoIp, hwndEditDspImage;
+static HWND	   hwndBtnChange, hwndBtnDspImageBrowser, hwndBtnDspDownload;
 
 /* Popup window handle definitions */
 static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
@@ -629,10 +638,107 @@ static inline void reset_general_handler(int select)
 		hwndStaticBrowser = hwndMFGStaticBrowser;
 		hwndBtnDown = hwndMFGBtnDown;
 		break;
-		case SELECT_FILE_TRANSFER:
+		case SELECT_UTILS:
+		hwndInfo = hwndUtilsInfo;
 		break;
 	}
 }
+/*extra utils section*/
+
+/*get ip address from user input controller
+**buff : buffer to store ip address,16 bytes are required
+**return value: 0 -> success
+**				other -> error code
+*/
+
+static int set_ip_addr(DWORD ip_old, DWORD ip_new)
+{
+	int ret = 0;
+	char ip_old_str[16], ip_new_str[16];
+	snprintf(ip_old_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(ip_old), 
+				SECOND_IPADDRESS(ip_old), THIRD_IPADDRESS(ip_old),
+				FOURTH_IPADDRESS(ip_old));
+	snprintf(ip_new_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(ip_new), 
+				SECOND_IPADDRESS(ip_new), THIRD_IPADDRESS(ip_new),
+				FOURTH_IPADDRESS(ip_new));
+	//download script
+	if(ret = download_file(ip_old_str, PC_CHANGEIP_SCRIPT, TARGET_CHANGEIP_SCRIPT))
+		return ret;
+	//exec script	
+	if(ret = exec_file_in_tg(ip_old_str, TARGET_CHANGEIP_SCRIPT))
+		return ret;
+	return execute_cmd_in_tg(ip_old_str, "reboot");
+}
+static int OnBtnChange(void)
+{
+	int ret = 0;
+	EnableWindow(hwndTab, FALSE);
+	EnableWindow(hwndBtnChange, FALSE);
+	DWORD ip_old, ip_new;
+	//get ip
+	SendMessage(hwndCommDeviceIp, IPM_GETADDRESS, 0, (LPARAM)&ip_old);
+	SendMessage(hwndCommChangetoIp, IPM_GETADDRESS, 0, (LPARAM)&ip_new);
+	//if(ip_old != ip_new)		
+		ret = set_ip_addr(ip_old, ip_new);
+	EnableWindow(hwndBtnChange, TRUE);
+	EnableWindow(hwndTab, TRUE);
+	return ret;
+}
+static void set_ip_addr_complete_cb(int retval, void *private_data)
+{
+	if(retval == 0)
+	{
+		dump_time();
+		log_print("Set ip success.\n");
+		SetWindowText(hwndInfo,"Set ip Success.");
+	}
+	else
+		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+}
+static int download_dsp_image(DWORD target_ip, char *local_image)
+{
+	int ret = 0;
+	char target_ip_str[16];
+	snprintf(target_ip_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(target_ip), 
+				SECOND_IPADDRESS(target_ip), THIRD_IPADDRESS(target_ip),
+				FOURTH_IPADDRESS(target_ip));
+	
+	//unlock rootfs
+	if(ret = execute_cmd_in_tg(target_ip_str,"unlock /"))
+		return ret;	
+	if(ret = download_file(target_ip_str, local_image, TARGET_DSP_IMAGE))
+		return ret;
+	return execute_cmd_in_tg(target_ip_str, "lock /");
+}
+static int OnBtnDspDownload(void)
+{
+	int ret = 0;
+	DWORD target_ip;
+	char dsp_image[MAX_PATH];
+	EnableWindow(hwndTab, FALSE);
+	EnableWindow(hwndBtnDspDownload, FALSE);
+	//get ip
+	SendMessage(hwndCommDeviceIp, IPM_GETADDRESS, 0, (LPARAM)&target_ip);
+	//get dsp image
+	GetWindowText(hwndEditDspImage, dsp_image, MAX_PATH);
+	ret = download_dsp_image(target_ip, dsp_image);	
+	EnableWindow(hwndBtnDspDownload, TRUE);
+	EnableWindow(hwndTab, TRUE);
+	return ret;
+}
+static void download_dsp_image_complete_cb(int retval, void *private_data)
+{
+	if(retval == 0)
+	{
+		dump_time();
+		log_print("Dsp download success.\n");
+		SetWindowText(hwndInfo,"Dsp download success.");
+	}
+	else
+		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+}	
+/*********************************************************/
+
 static inline void SetDynamicInfo(const char *info)
 {
 	hwndDynamic = hwndInfo;
@@ -770,7 +876,7 @@ void update_ui_resources(int enable)
 		#endif		
 #endif			
 		break;
-		case SELECT_FILE_TRANSFER:		
+		case SELECT_UTILS:		
 		break;
 	}
 #ifdef DEVELOPMENT
@@ -792,9 +898,7 @@ static inline void reset_ui_resources(int page)
 		case SELECT_MFG_PROGRAMMING:
 		EnableWindow(hwndMFGBtnDown,FALSE);		
 		break;
-		case SELECT_FILE_TRANSFER:
-		EnableWindow(hwndFdButtonDownload,FALSE);
-		EnableWindow(hwndFuButtonUpload,FALSE);
+		case SELECT_UTILS:	
 		break;
 		default:
 		UI_DEBUG("Invalid page");
@@ -867,7 +971,7 @@ static BOOL get_image_info(const char*image)
 }
 
 /*get src 's filename concatenate to dest
-* dest is linux filename，
+* dest is linux filename
 * src is windows filename
 */
 static inline int get_abs_file_name(char *dest,const char *src)
@@ -2329,6 +2433,150 @@ static void InitMFGWindow(void)
 	ShowWindow(hwndMFGPage, TRUE);
 #endif
 }
+
+/* init utils window */
+static BOOL InitUtilsWindow(void)
+{
+	#define WIDTH_IPADDR	200
+	int page_start_x = PAGE_START_X;
+	int page_start_y = (HEIGHT_TAG+Y_MARGIN);
+	
+	int client_gap = 3 * Y_MARGIN;
+	
+    int page_width = rcClient.right;
+    int page_height = rcClient.bottom - page_start_y;
+	
+	int Groupbox1_start_x = page_start_x + X_MARGIN;
+	int Groupbox1_start_y = page_start_y + Y_MARGIN + HEIGHT_CONTROL;//leave one line to add device ip controller
+	
+    int Groupbox1_width = page_width- 5*page_start_x;
+    int Groupbox1_height = HEIGHT_CONTROL + client_gap * 2;
+
+	int Groupbox2_start_x = page_start_x + X_MARGIN;
+	int Groupbox2_start_y = Groupbox1_start_y + Y_MARGIN + Groupbox1_height;
+	
+    int Groupbox2_width = Groupbox1_width;
+    int Groupbox2_height = HEIGHT_CONTROL * 2 + client_gap * 2;
+		  
+    int relative_x = Groupbox1_start_x + X_MARGIN;//page_start_x;
+    int relative_y = page_start_y;
+	
+	LPARAM def_ipaddr = MAKEIPADDRESS(10, 10, 0, 12);
+ 
+    hwndUtilsPage = CreateWindowEx(0, szAppName, TEXT(""),
+            WS_CHILD,
+            page_start_x, page_start_y,
+            page_width, page_height,
+            hwndTab, NULL, hInst, NULL);
+	printf("page_start_x = %d\npage_start_y = %d\n", page_start_x, page_start_y);
+	printf("page_width = %d\npage_height = %d\n", page_width, page_height);
+	hwndStaticDeviceIp = CreateWindow(TEXT("static"), "Device Ip:",
+			WS_CHILD | WS_VISIBLE | SS_RIGHT,
+			relative_x, relative_y + WIN_STATIC_OFFSET,
+			WIDTH_TEXT, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL, 
+			hInst, NULL);
+			
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	
+	hwndCommDeviceIp = CreateWindowEx(WS_EX_CLIENTEDGE, WC_IPADDRESS, NULL,
+			WS_CHILD | WS_VISIBLE ,
+			relative_x, relative_y,
+			WIDTH_IPADDR, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+	/*set default ip address*/
+	
+	SendMessage(hwndCommDeviceIp, IPM_SETADDRESS, 0, def_ipaddr);	
+	hwndGroupChangeIp = CreateWindow(TEXT("button"), "ChangeIp",
+			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,			
+			Groupbox1_start_x, Groupbox1_start_y,
+			Groupbox1_width, Groupbox1_height,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+	
+	relative_x = Groupbox1_start_x + X_MARGIN;
+    relative_y = Groupbox1_start_y + client_gap;
+	
+	hwndStaticChangetoIp = CreateWindow(TEXT("static"), "ChangeTo:",
+			WS_CHILD | WS_VISIBLE | SS_RIGHT,
+			relative_x, relative_y + WIN_STATIC_OFFSET,
+			WIDTH_TEXT, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);	
+			
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	
+	hwndCommChangetoIp = CreateWindowEx(WS_EX_CLIENTEDGE, WC_IPADDRESS, NULL,
+			WS_CHILD | WS_VISIBLE,
+			relative_x, relative_y,
+			WIDTH_IPADDR, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+	SendMessage(hwndCommChangetoIp, IPM_SETADDRESS, 0, def_ipaddr);
+	
+	relative_x += WIDTH_IPADDR +  X_MARGIN;
+	
+	hwndBtnChange = CreateWindow(TEXT("button"), "Change",
+			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+			relative_x, relative_y,
+			WIDTH_BUTTON, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	hwndGroupDspImage = CreateWindow(TEXT("button"), "Dsp Image",
+			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,			
+			Groupbox2_start_x, Groupbox2_start_y,
+			Groupbox2_width, Groupbox2_height,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	relative_x = Groupbox2_start_x + X_MARGIN;
+	relative_y = Groupbox2_start_y + client_gap;
+	hwndStaticDspImage = CreateWindow(TEXT("static"), "Dsp Image:",
+			WS_CHILD | WS_VISIBLE | SS_RIGHT,
+			relative_x, relative_y + WIN_STATIC_OFFSET,
+			WIDTH_TEXT, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	
+	hwndEditDspImage = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("edit"), NULL,
+			WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL | ES_READONLY,
+			relative_x, relative_y,
+			WIDTH_EDIT, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	relative_x += WIDTH_EDIT + X_MARGIN;
+	
+	hwndBtnDspImageBrowser = CreateWindow(TEXT("button"), "Browser",
+			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+			relative_x, relative_y,
+			WIDTH_BUTTON, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	relative_y += HEIGHT_CONTROL + Y_MARGIN;
+	relative_x = Groupbox2_start_x + X_MARGIN;
+	int info_width = WIDTH_EDIT + WIDTH_TEXT + X_MARGIN;
+	hwndUtilsInfo = CreateWindow(TEXT("static"),"",
+			WS_CHILD | WS_VISIBLE | SS_LEFT,
+			relative_x, relative_y,
+			info_width, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	relative_x += info_width + X_MARGIN;
+	hwndBtnDspDownload = CreateWindow(TEXT("button"), "Download",
+			WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON,
+			relative_x, relative_y,
+			WIDTH_BUTTON, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+
+}
 /*
  *  Name:     InitMainWindow
  *
@@ -2915,6 +3163,37 @@ static BOOL ProcessFileTransferCommand(WPARAM wParam, LPARAM lParam)
 	return TRUE;
 }
 
+/* utils command  */
+static BOOL ProcessUtilsCommand(WPARAM wParam, LPARAM lParam)
+{
+	HWND hwnd = (HWND)lParam;
+	DWORD device_ip_int, changeto_ip;	
+	char dsp_image[MAX_PATH];
+	
+	if(hwnd == hwndBtnDspImageBrowser)
+	{
+		if(GetFileName(dsp_image,MAX_PATH) == TRUE)
+		{
+			SetWindowText(hwndEditDspImage,dsp_image);
+			EnableWindow(hwndBtnDspDownload,TRUE);			
+		}
+		return TRUE;
+	}
+	
+	if(hwnd == hwndBtnChange)
+	{
+		g_background_func = OnBtnChange;
+		g_complete_func = set_ip_addr_complete_cb;
+	}
+	else if(hwnd == hwndBtnDspDownload)
+	{
+		g_background_func = OnBtnDspDownload;
+		g_complete_func = download_dsp_image_complete_cb;
+	}
+	WAKE_THREAD_UP();	
+	return TRUE;
+}
+
 static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 {	
 	
@@ -3165,8 +3444,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			return ProcessSPLCommand(wParam,lParam);
 		else if(hwnd == hwndMFGPage)
 			return ProcessMFGCommand(wParam,lParam);
-		else if(hwnd == hwndFileTransferPage)
-			return ProcessFileTransferCommand(wParam,lParam);
+		else if(hwnd == hwndUtilsPage)
+			return ProcessUtilsCommand(wParam,lParam);
 		break;
 		
         case WM_CREATE:
@@ -3220,7 +3499,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndMFGPage,TRUE);
 						ShowWindow(hwndSPLPage,FALSE);
 						ShowWindow(hwndLinPage,FALSE);
-						ShowWindow(hwndFileTransferPage,FALSE);
+						ShowWindow(hwndUtilsPage,FALSE);
 						ini_file = "for_mfg_file.ini";
 						reset_general_handler(SELECT_MFG_PROGRAMMING);						
 						break;
@@ -3229,7 +3508,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndMFGPage,FALSE);
 						ShowWindow(hwndSPLPage,TRUE);
 						ShowWindow(hwndLinPage,FALSE);
-						ShowWindow(hwndFileTransferPage,FALSE);
+						ShowWindow(hwndUtilsPage,FALSE);
 						ini_file = "for_mfg_file.ini";
 						reset_general_handler(SELECT_SPL_PROGRAMMING);
 						break;
@@ -3238,18 +3517,19 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 						ShowWindow(hwndMFGPage,FALSE);
 						ShowWindow(hwndSPLPage,FALSE);
 						ShowWindow(hwndLinPage,TRUE);
-						ShowWindow(hwndFileTransferPage,FALSE);						
+						ShowWindow(hwndUtilsPage,FALSE);						
 						ini_file = "for_user_file.ini";
 						reset_general_handler(SELECT_LINUX_PROGRAMMING);
 						
 						break;
-						case SELECT_FILE_TRANSFER:
+						
+						case SELECT_UTILS:
 						ShowWindow(hwndMFGPage,FALSE);
 						ShowWindow(hwndSPLPage,FALSE);
 						ShowWindow(hwndLinPage,FALSE);
-						ShowWindow(hwndFileTransferPage,TRUE);
-						ini_file = NULL;							
-						hwndInfo = hwndFdNotify;
+						ShowWindow(hwndUtilsPage,TRUE);
+						ini_file = NULL;
+						hwndInfo = hwndUtilsInfo;
 						hwndIpInfo = NULL;
 						hwndProcessInfo = NULL;
 						break;
@@ -3257,7 +3537,8 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 					dump_time();					
                     log_print("burn mode switch to %s\n",burn_mode == SELECT_LINUX_PROGRAMMING ? "linux" :
 					(burn_mode == SELECT_SPL_PROGRAMMING ? "spl" :
-					(burn_mode == SELECT_MFG_PROGRAMMING ? "mfg" : "invalid burn mode")));
+					(burn_mode == SELECT_MFG_PROGRAMMING ? "mfg" : 
+					(burn_mode == SELECT_UTILS ? "utils" :"invalid burn mode"))));
                     return TRUE;
 #endif
                 default:
@@ -3641,7 +3922,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     InitLinuxWindow();
 	InitSPLWindow();
 	InitMFGWindow();
-	InitFileTransferWindow();
+	InitUtilsWindow();
+	//InitFileTransferWindow();
 	reset_general_handler(SELECT_LINUX_PROGRAMMING);
 #elif defined(MAINTAINMENT)
 	InitLinuxWindow();

@@ -15,10 +15,6 @@ int WinUpgradeLibInit(char *nand_image_name, unsigned long ImageLen, const char 
 int burnImage();
 int burnpartition(int parts_selected);
 
-/* index = 0 ipl; 1 spl; 2 linux; 3calibration; 4rootfs; 5def; 6ota; 7run; 8userdata; 
-9log; 10
-0x33 SPL_BURNING; 0xCC MFG_BURNING
-*/
 int progress_reply_status_get (char *index, unsigned char *percent, unsigned short *status );
 
 //File operation API

@@ -22,9 +22,9 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=$(strip BR01)
+PROJECT=$(strip BR01_2ND)
 VERSION=v02p01a
-valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA REPEATER_BBA M2 BR01 BR01_2ND
+valid_proj=BR01 BR01_2ND 
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
     $(foreach pro,$(valid_proj),$(warning $(pro)))
@@ -56,8 +56,9 @@ TARGET_DEV = UniDevTools.exe
 TARGET_LIMITED = UniDevLimitedTools.exe
 TARGET_MAINTAIN = UniMaintainTools.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
-WIN_UTIL_PATH=./output/$(PROJECT)
-UTILS=./$(LIB)/lib/libupgrade.dll
+WIN_TOOL_PATH=./output/$(PROJECT)
+LIBS=./$(LIB)/lib/libupgrade.dll
+UTILS=./utils #only for linux
 
 DEPS = devToolsRes.h
 
@@ -65,7 +66,7 @@ all: clean ./lib/libiniparser.a $(TARGETS) install
 
 ./lib/libiniparser.a:./src/dictionary.o ./src/iniparser.o
 	[ -d "lib" ] || mkdir lib
-	$(AR) rcs -o $@ $^
+	$(AR) rcs $@ $^
 ./src/iniparser.o:./src/iniparser.c
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
 ./src/dictionary.o:./src/dictionary.c
@@ -112,28 +113,28 @@ devToolsUI_limited.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 prepare_dir:
-	[ -d "$(WIN_UTIL_PATH)" ] || mkdir $(WIN_UTIL_PATH) -p
-	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))
-	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))
-	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))
-	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))
+	[ -d "$(WIN_TOOL_PATH)" ] || mkdir $(WIN_TOOL_PATH) -p
+	[ -d "$(WIN_TOOL_PATH)/$(basename $(TARGET_DEV))" ] || mkdir $(WIN_TOOL_PATH)/$(basename $(TARGET_DEV))
+	[ -d "$(WIN_TOOL_PATH)/$(basename $(TARGET_MAINTAIN))" ] || mkdir $(WIN_TOOL_PATH)/$(basename $(TARGET_MAINTAIN))
+	[ -d "$(WIN_TOOL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_TOOL_PATH)/$(basename $(TARGET_PRODUCTION))
+	[ -d "$(WIN_TOOL_PATH)/$(basename $(TARGET_LIMITED))" ] || mkdir $(WIN_TOOL_PATH)/$(basename $(TARGET_LIMITED))
 
 install:prepare_dir
-	cp -rf readme_for_development.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/readme.txt
-	cp -rf for_user_file.ini for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
-	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
-	cp -rf $(TARGET_DEV) $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/
-	cp -rf readme_for_maintainment.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/readme.txt
-	cp -rf for_user_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
-	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
-	cp -rf $(TARGET_MAINTAIN)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
-	cp -rf readme_for_production.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
-	cp -rf for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
-	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
-	cp -rf $(TARGET_PRODUCTION)  $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
-	cp -rf readme_for_development.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))/readme.txt
-	cp -rf for_user_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))/
-	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))/
-	cp -rf $(TARGET_LIMITED) $(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))/
+	cp -rf readme_for_development.txt $(WIN_TOOL_PATH)/$(basename $(TARGET_DEV))/readme.txt
+	cp -rf for_user_file.ini for_mfg_file.ini $(WIN_TOOL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf $(LIBS) $(WIN_TOOL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf $(TARGET_DEV) $(WIN_TOOL_PATH)/$(basename $(TARGET_DEV))/
+	cp -rf readme_for_maintainment.txt $(WIN_TOOL_PATH)/$(basename $(TARGET_MAINTAIN))/readme.txt
+	cp -rf for_user_file.ini $(WIN_TOOL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf $(LIBS) $(WIN_TOOL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf $(TARGET_MAINTAIN)  $(WIN_TOOL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf readme_for_production.txt $(WIN_TOOL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
+	cp -rf for_mfg_file.ini $(WIN_TOOL_PATH)/$(basename $(TARGET_PRODUCTION))/
+	cp -rf $(LIBS) $(WIN_TOOL_PATH)/$(basename $(TARGET_PRODUCTION))/
+	cp -rf $(TARGET_PRODUCTION)  $(WIN_TOOL_PATH)/$(basename $(TARGET_PRODUCTION))/
+	cp -rf readme_for_development.txt $(WIN_TOOL_PATH)/$(basename $(TARGET_LIMITED))/readme.txt
+	cp -rf for_user_file.ini $(WIN_TOOL_PATH)/$(basename $(TARGET_LIMITED))/
+	cp -rf $(LIBS) $(WIN_TOOL_PATH)/$(basename $(TARGET_LIMITED))/
+	cp -rf $(TARGET_LIMITED) $(WIN_TOOL_PATH)/$(basename $(TARGET_LIMITED))/
 clean:
 	rm -f *.o src/*.o $(TARGETS)

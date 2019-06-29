@@ -74,7 +74,7 @@
 #define DEBUG_CONSOLE		1
 #define DEBUG_LOG			2
 
-#define DEBUG_MODE			DEBUG_CONSOLE	//fixme if you want change the debug mode
+#define DEBUG_MODE			DEBUG_LOG	//fixme if you want change the debug mode
 #define LOGFILE				"devToolUI.log"
 
 
@@ -175,7 +175,7 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
  
 #define WIDTH_EDIT_NAND         360
 #define WIDTH_EDIT1             135
-
+#define WIDTH_IPADDR	200
 
 #define WIDTH_BUTTON_NANDFLASH_PROGRAM 110
 
@@ -286,12 +286,39 @@ const char *ip_addr[IP_MAX] = {
 	"10.10.12.21",
 	"10.10.12.22"
 };
-
+/*Notice: hosts and macros start with SEL_ must at that order*/
+#define MAX_HOST	2
+#define SEL_ALL 0
+#define SEL_M1S2 1
+#define SEL_M1S1 2
+#define SEL_INTRANET 3
+struct Host{
+	char *name; //unused
+	DWORD usb_addr;
+	DWORD eth_addr;
+	DWORD intranet_addr;
+};
+struct Host hosts[MAX_HOST + 1] = { 
+		[0] = {.name = "ALL", .usb_addr = (DWORD)MAKEIPADDRESS(255, 255, 0, 0), 
+		.eth_addr = (DWORD)MAKEIPADDRESS(255, 255, 255, 0), 
+		.intranet_addr = (DWORD)MAKEIPADDRESS(255, 255, 255, 0)},//only store mask
+		
+		[1] = {.name = "M1S2", .usb_addr = (DWORD)MAKEIPADDRESS(10, 10, 0, 12), 
+		.eth_addr = (DWORD)MAKEIPADDRESS(10, 10, 12, 12), 
+		.intranet_addr = (DWORD)MAKEIPADDRESS(10, 85, 32, 12)},
+		
+		[2] = {.name = "M1S1", .usb_addr = 0, 
+		.eth_addr = (DWORD)MAKEIPADDRESS(10, 10, 12, 11), 
+		.intranet_addr = (DWORD)MAKEIPADDRESS(10, 85, 32, 11)}
+};
+DWORD def_subnet = (DWORD)MAKEIPADDRESS(10, 10, 12, 0);
+DWORD subnet_mask = (DWORD)MAKEIPADDRESS(255, 255,0, 0);
 /*********************Tab Select ID****************************/
 #define SELECT_LINUX_PROGRAMMING		0
 #define SELECT_SPL_PROGRAMMING			1
 #define SELECT_MFG_PROGRAMMING			2
 #define SELECT_UTILS					3
+
 
 
 /* Unication UniDevTools lines buffer definitions */
@@ -303,8 +330,6 @@ PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Upgrade"};
 PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
 #endif
 
-#define PC_CHANGEIP_SCRIPT		"./script/changip.sh" //need to change
-#define TARGET_CHANGEIP_SCRIPT	"/tmp/changeip.sh"
 #define TARGET_DSP_IMAGE		"/root/dsp_image.bin"
 
 /**********************************************************************/
@@ -396,6 +421,7 @@ static RECT rcClient; // rcClient.right, rcClient.bottom
 typedef struct _ini_file_info
 {
 	int ip_should_flash;
+	DWORD dword_ip[4]; //used by br01 for store ip
     char ip[4][16]; // xxx.xxx.xxx.xxx
     char name_of_image[MAX_PATH];
 	char name_of_rescue_image[MAX_PATH];
@@ -419,13 +445,15 @@ static HWND    hwndLinPage;
 static HWND    hwndLinGroupReadme;
 static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticIpInfo,hwndLinProcessInfo,hwndLinStaticNotice;
 
+static HWND    hwndLinStaticSubNet, hwndLinStaticHost;
+static HWND    hwndLinCommSubNet, hwndLinComboHost;
 static HWND    hwndLinStaticDev,hwndLinComboDevList,hwndLinBtnRefresh,hwndLinBtnReset;/*for Br01*/
 static HWND    hwndLinGroupOptions;
 
 static HWND    hwndLinStaticImg;
 static HWND    hwndLinStaticBrowser;
 
-static HWND    hwndLinBtnBrowser,hwndLinBtnDown,hwndBtnEnableTelnet;
+static HWND    hwndLinBtnBrowser,hwndLinBtnDown;
 static HWND    hwndCheckBoxUserdata,hwndCheckBoxSkipBatCheck;
 
 
@@ -446,7 +474,8 @@ static HWND    hwndSPLBtnBrowser,hwndSPLBtnDown,hwndSPLBtnStop;
 static HWND    hwndMFGPage;
 static HWND    hwndMFGGroupReadme;
 static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticIpInfo,hwndMFGProcessInfo,hwndMFGStaticNotice;
-
+static HWND    hwndMFGStaticSubNet;
+static HWND    hwndMFGCommSubNet;
 //static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
 static HWND    hwndMFGGroupOptions;
 
@@ -455,18 +484,12 @@ static HWND    hwndMFGStaticBrowser;
 static HWND    hwndMFGBtnBrowser,hwndMFGBtnDown,hwndMFGBtnStop;
 static HWND    hwndCheckBoxBatch;
 
-/**********************File Transfer Handler Declaration*************************/
-#define MAX_BUFF_LEN	0x01400000 /*20M*/
-static HWND	   hwndFileTransferPage,hwndFtNotice;
-static HWND    hwndFdGroupBox,hwndFdSrcFile,hwndFdDestFile,hwndFdStaticSrcFile,hwndFdEditDestFile,hwndFdButtonBrowse,hwndFdButtonDownload,hwndFdNotify;
-static HWND    hwndFuGroupBox,hwndFuSrcFile,hwndFuDestFile,hwndFuEditSrcFile,hwndFuStaticDestFile,hwndFuButtonBrowse,hwndFuButtonUpload,hwndFuNotify;
-
 /**********************Utils Handler Declaration*************************/
-static HWND    hwndUtilsPage, hwndGroupChangeIp, hwndGroupDspImage, hwndUtilsInfo;
-static HWND    hwndStaticDeviceIp, hwndStaticChangetoIp, hwndStaticDspImage;
-static HWND    hwndCommDeviceIp, hwndCommChangetoIp, hwndEditDspImage;
+static HWND    hwndUtilsPage, hwndGroupChangeSubNet, hwndGroupDspImage, hwndUtilsInfo;
+static HWND    hwndStaticDeviceSubNet, hwndUtilsStaticHost, hwndStaticChangto, hwndStaticDspImage;
+static HWND    hwndUtilsIpAddrDeviceSubNet, hwndUtilsComboHost, hwndUtilsIpAddrChangeto, hwndEditDspImage, hwndUtilsComboHost;
 static HWND	   hwndBtnChange, hwndBtnDspImageBrowser, hwndBtnDspDownload;
-
+static HWND    hwndUtilsEnableTelnet;
 /* Popup window handle definitions */
 static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
 
@@ -509,7 +532,6 @@ BOOL InitDebugConsole( void )
     return TRUE;
 
 }
-
 /*
  *  Name:     ExitDebugConsole
  *
@@ -553,6 +575,147 @@ void ExitDebugConsole( void )
 }
 
 #endif
+
+static inline int exec_script_in_target(const char *ip, const char *cmdlines)
+{
+	#define TMPFILE		"tmpfile.sh"
+	int ret = 0;
+	FILE *fp = fopen("./"TMPFILE, "wb+");
+	fwrite("#!/bin/sh\n", 1, strlen("#!/bin/sh\n"), fp);
+	fwrite(cmdlines,1, strlen(cmdlines), fp);
+	fclose(fp);	
+	if(ret = download_file(ip,"./"TMPFILE, "/tmp/"TMPFILE))
+		return ret;	
+	remove("./"TMPFILE);
+	if(ret = execute_cmd_in_tg(ip, "chmod a+x /tmp/"TMPFILE))
+		return ret;	
+	return exec_file_in_tg(ip, "/tmp/"TMPFILE);	
+}
+static inline int get_socid(const char *ip)
+{
+	#define FILE_SOCID	"tmpfile.socid"
+	int ret;	
+	ret = upload_file(ip,  FILE_SOCID, "/sys/devices/system/cpu/cpu0/cpuid");		
+	if((ret & 0xFFFF) == 0xFDAF)//bug, ignore CRC error
+		ret = 0;
+	log_print("retval from upload_file : %x\n", ret);
+	if(ret)
+		return ret;
+	FILE *fp = fopen(FILE_SOCID, "rb");
+	char socid;
+	if( 1 != fread(&socid, 1, 1, fp))
+		return -1;
+	switch(socid){
+		case '0':ret = SEL_M1S1;
+		break;
+		case '1':ret = SEL_M1S2;
+		break;
+		default:
+		ret = -1;
+	}
+	fclose(fp);	
+	remove(FILE_SOCID);
+	return ret;
+}	
+static inline int save_net_config(const char *ip)//in upg mode
+{	
+	return exec_script_in_target(ip, "mount -t yaffs2 /dev/mtdblock4 /mnt/mtdblock4\nmkdir /tmp/bak\ncp /mnt/mtdblock4/etc/network_setting.sh /mnt/mtdblock4/etc/udhcpd.conf /tmp/bak/\numount /dev/mtdblock4");
+}
+static inline int restore_net_config(const char *ip)//in upg mode
+{
+	return exec_script_in_target(ip, "mount -t yaffs2 /dev/mtdblock4 /mnt/mtdblock4\ncp /tmp/bak/network_setting.sh /tmp/bak/udhcpd.conf /mnt/mtdblock4/etc/\numount /dev/mtdblock4");
+}
+
+static inline int RebootTarget(const char *ip)
+{	
+	return execute_cmd_in_tg(ip,"reboot");
+}
+static inline int EnableTelnet(const char *ip)
+{
+	return execute_cmd_in_tg(ip,"telnetd &");
+}
+
+/*extra utils section*/
+/*create and init ip widget, it have some default paramenter hard code in this function*/
+static HWND create_and_init_ip_widget(int x, int y, HWND parent, HINSTANCE hinst, DWORD ip)/*extra parameter*/
+{			
+	HWND hwnd = NULL;
+	hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WC_IPADDRESS, NULL,
+			WS_CHILD | WS_VISIBLE ,
+			x, y,
+			WIDTH_IPADDR, HEIGHT_CONTROL,
+			parent, NULL,
+			hinst, NULL);
+	SendMessage(hwnd, IPM_SETADDRESS, 0, (LPARAM)ip);//set default ip address
+	//SendMessage(hwnd, IPM_SETRANGE, 2, MAKEIPRANGE(0, 0));
+	//SendMessage(hwnd, IPM_SETRANGE, 3, MAKEIPRANGE(0, 0));
+	return hwnd;
+}
+static HWND create_and_init_host_combo(int x, int y, HWND parent, HINSTANCE hinst, int page)
+{
+	HWND hwnd = NULL;
+	hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("ComboBox"), NULL,
+            WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE|
+            CBS_AUTOHSCROLL,
+            x, y,
+            WIDTH_TEXT, HEIGHT_CONTROL*(MAX_HOST+1),
+            parent, NULL,
+            hinst, NULL);		
+	
+	
+	if(page == SELECT_LINUX_PROGRAMMING)//utils page have no USB_M1S2 and USB_M1S1
+	{
+		ComboBox_AddString(hwnd, "USB_ALL");
+		ComboBox_AddString(hwnd, "USB_M1S2");
+		ComboBox_AddString(hwnd, "USB_M1S1");
+	}
+	else
+		ComboBox_AddString(hwnd, "USB");
+	ComboBox_AddString(hwnd, "Intranet");
+	ComboBox_SetCurSel(hwnd, 0);
+	return hwnd;
+}	
+
+static inline int DWORD_to_ipstr(DWORD ip, char *ip_str, int strlen)
+{
+	LPARAM lparam_ip = (LPARAM)ip;
+	snprintf(ip_str, strlen, "%d.%d.%d.%d",FIRST_IPADDRESS(lparam_ip), 
+				SECOND_IPADDRESS(lparam_ip), THIRD_IPADDRESS(lparam_ip),
+				FOURTH_IPADDRESS(lparam_ip));
+	return 0;
+}
+
+static int set_usbnet(DWORD ip_old, DWORD ip_new)
+{
+	int ret = 0;
+	char ip_old_str[16];
+	char cmd[256];
+	DWORD_to_ipstr(ip_old, ip_old_str, 16);
+	
+	//affect after reboot
+	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set usb 0 %d.%d",FIRST_IPADDRESS(ip_new), 
+				SECOND_IPADDRESS(ip_new));
+	if(ret = execute_cmd_in_tg(ip_old_str, "unlock /"))
+		return ret;
+	if(ret = execute_cmd_in_tg(ip_old_str, cmd))
+		return ret;	
+	return execute_cmd_in_tg(ip_old_str, "lock /");
+}
+static int set_intranet(DWORD ip_old, DWORD ip_new)
+{
+	int ret = 0;
+	char ip_old_str[16];
+	char cmd[256];
+	DWORD_to_ipstr(ip_old, ip_old_str, 16);
+	//affect after reboot
+	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set ether 0 %d.%d.%d.%d",FIRST_IPADDRESS(ip_new),
+			SECOND_IPADDRESS(ip_new), THIRD_IPADDRESS(ip_new), FOURTH_IPADDRESS(ip_new));
+	if(ret = execute_cmd_in_tg(ip_old_str, "unlock /"))
+		return ret;
+	if(ret = execute_cmd_in_tg(ip_old_str, cmd))
+		return ret;	
+	return execute_cmd_in_tg(ip_old_str, "lock /");
+}
 
 static inline void dump_project(void)
 {	
@@ -643,43 +806,94 @@ static inline void reset_general_handler(int select)
 		break;
 	}
 }
-/*extra utils section*/
 
-/*get ip address from user input controller
-**buff : buffer to store ip address,16 bytes are required
-**return value: 0 -> success
-**				other -> error code
-*/
-
-static int set_ip_addr(DWORD ip_old, DWORD ip_new)
+static int OnBtnChange(void) //only for utils page and must in app mode
 {
 	int ret = 0;
-	char ip_old_str[16], ip_new_str[16];
-	snprintf(ip_old_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(ip_old), 
-				SECOND_IPADDRESS(ip_old), THIRD_IPADDRESS(ip_old),
-				FOURTH_IPADDRESS(ip_old));
-	snprintf(ip_new_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(ip_new), 
-				SECOND_IPADDRESS(ip_new), THIRD_IPADDRESS(ip_new),
-				FOURTH_IPADDRESS(ip_new));
-	//download script
-	if(ret = download_file(ip_old_str, PC_CHANGEIP_SCRIPT, TARGET_CHANGEIP_SCRIPT))
-		return ret;
-	//exec script	
-	if(ret = exec_file_in_tg(ip_old_str, TARGET_CHANGEIP_SCRIPT))
-		return ret;
-	return execute_cmd_in_tg(ip_old_str, "reboot");
-}
-static int OnBtnChange(void)
-{
-	int ret = 0;
+	char ipstr_reboot[16];
+	char ipstr_old[16], ipstr_new[16];
 	EnableWindow(hwndTab, FALSE);
 	EnableWindow(hwndBtnChange, FALSE);
-	DWORD ip_old, ip_new;
+	DWORD ip_old, ip_new, ip_reboot;
+	DWORD mask, old_subnet, new_subnet;
 	//get ip
-	SendMessage(hwndCommDeviceIp, IPM_GETADDRESS, 0, (LPARAM)&ip_old);
-	SendMessage(hwndCommChangetoIp, IPM_GETADDRESS, 0, (LPARAM)&ip_new);
-	//if(ip_old != ip_new)		
-		ret = set_ip_addr(ip_old, ip_new);
+	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0, (LPARAM)&ip_old);
+	SendMessage(hwndUtilsIpAddrChangeto, IPM_GETADDRESS, 0, (LPARAM)&ip_new);
+	int selection = ComboBox_GetCurSel(hwndUtilsComboHost);	
+	
+	/*for log*/
+	DWORD_to_ipstr(ip_old, ipstr_old, 16);
+	DWORD_to_ipstr(ip_new, ipstr_new, 16);
+	log_print("ChangeIp: selection = %d, ip_old = %s, ip_new = %s\n", selection, ipstr_old, ipstr_new);
+
+#if 1 //disable USB_M1S1 and USB_M1S2
+	if(selection == SEL_ALL)
+	{
+		int i;	
+		mask = hosts[SEL_ALL].eth_addr;
+		old_subnet = ip_old & mask;
+		new_subnet = ip_new & mask;				
+		for(i = MAX_HOST; i > 0; --i)
+		{
+			ip_old = old_subnet | (hosts[i].eth_addr & ~mask);
+			ip_new = new_subnet | (hosts[i].eth_addr & ~mask);
+			if(ret = set_usbnet(ip_old, ip_new))			
+				break;			
+		}
+		//reboot master
+		DWORD_to_ipstr(old_subnet | (hosts[SEL_M1S2].eth_addr & ~mask), ipstr_reboot, 16);
+	}
+	else//SEL_INTRANET
+	{
+		mask = hosts[SEL_ALL].intranet_addr;
+		old_subnet = ip_old & mask;
+		new_subnet = ip_new & mask;
+		ret = set_intranet(ip_old, ip_new);
+		DWORD_to_ipstr(ip_old, ipstr_reboot, 16);
+	}
+	
+#else//enable USB_M1S1 and USB_M1S2
+	if(selection == SEL_INTRANET)
+	{
+		mask = hosts[SEL_ALL].intranet_addr;
+		old_subnet = ip_old & mask;
+		new_subnet = ip_new & mask;
+		ret = set_intranet(ip_old, ip_new);
+		DWORD_to_ipstr(ip_old, ipstr_reboot, 16);
+	}
+	else
+	{
+		mask = hosts[SEL_ALL].eth_addr;
+		old_subnet = ip_old & mask;
+		new_subnet = ip_new & mask;
+		if(selection == SEL_ALL)
+		{
+			int i;			
+			for(i = MAX_HOST; i > 0; --i)
+			{
+				ip_old = old_subnet | (hosts[i].eth_addr & ~mask);
+				ip_new = new_subnet | (hosts[i].eth_addr & ~mask);
+				if(ret = set_usbnet(ip_old, ip_new))			
+					break;			
+			}
+			//reboot master
+			DWORD_to_ipstr(old_subnet | (hosts[SEL_M1S2].eth_addr & ~mask), ipstr_reboot, 16);
+		}
+		else{			
+			ip_old = old_subnet | (hosts[selection].eth_addr & ~mask);
+			ip_new = new_subnet | (hosts[selection].eth_addr & ~mask);
+			ret = set_usbnet(ip_old, ip_new);
+			//reboot self
+			DWORD_to_ipstr(old_subnet | (hosts[selection].eth_addr & ~mask), ipstr_reboot, 16);
+		}
+	}	
+#endif	
+	if(ret == 0)//reboot master M1S2
+	{	
+		ret = RebootTarget(ipstr_reboot);
+		//log_print("reboot after changeip, ipstr_reboot = %s\n", ipstr_reboot);
+	}
+	
 	EnableWindow(hwndBtnChange, TRUE);
 	EnableWindow(hwndTab, TRUE);
 	return ret;
@@ -695,14 +909,14 @@ static void set_ip_addr_complete_cb(int retval, void *private_data)
 	else
 		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
 }
-static int download_dsp_image(DWORD target_ip, char *local_image)
+static int download_dsp_image(LPARAM target_ip, char *local_image)
 {
 	int ret = 0;
 	char target_ip_str[16];
 	snprintf(target_ip_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(target_ip), 
 				SECOND_IPADDRESS(target_ip), THIRD_IPADDRESS(target_ip),
 				FOURTH_IPADDRESS(target_ip));
-	
+	log_print("download Dsp Image : ip = %s, DspImage = %s\n",target_ip_str, local_image);
 	//unlock rootfs
 	if(ret = execute_cmd_in_tg(target_ip_str,"unlock /"))
 		return ret;	
@@ -713,14 +927,15 @@ static int download_dsp_image(DWORD target_ip, char *local_image)
 static int OnBtnDspDownload(void)
 {
 	int ret = 0;
-	DWORD target_ip;
-	char dsp_image[MAX_PATH];
+	LPARAM target_ip;
+	char dsp_image[MAX_PATH];	
 	EnableWindow(hwndTab, FALSE);
 	EnableWindow(hwndBtnDspDownload, FALSE);
 	//get ip
-	SendMessage(hwndCommDeviceIp, IPM_GETADDRESS, 0, (LPARAM)&target_ip);
+	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0, (LPARAM)&target_ip);
 	//get dsp image
 	GetWindowText(hwndEditDspImage, dsp_image, MAX_PATH);
+		
 	ret = download_dsp_image(target_ip, dsp_image);	
 	EnableWindow(hwndBtnDspDownload, TRUE);
 	EnableWindow(hwndTab, TRUE);
@@ -843,8 +1058,7 @@ void update_ui_resources(int enable)
 		EnableWindow(hwndLinBtnBrowser,enable);
 		EnableWindow(hwndLinBtnDown,enable);
 		EnableWindow(hwndLinBtnRefresh,enable);
-		EnableWindow(hwndCheckBoxUserdata,enable);
-		EnableWindow(hwndBtnEnableTelnet,enable);
+		EnableWindow(hwndCheckBoxUserdata,enable);	
 		EnableWindow(hwndCheckBoxSkipBatCheck,enable);
 		
 #ifdef DEVELOPMENT
@@ -876,7 +1090,7 @@ void update_ui_resources(int enable)
 		#endif		
 #endif			
 		break;
-		case SELECT_UTILS:		
+		case SELECT_UTILS:
 		break;
 	}
 #ifdef DEVELOPMENT
@@ -1045,14 +1259,7 @@ static inline int write_file(void *buff,int len,const char *filename)
 	return retval;
 }
 
-static inline int RebootTarget(const char *ip)
-{	
-	return execute_cmd_in_tg(ip,"reboot");
-}
-static inline int EnableTelnet(const char *ip)
-{
-	return execute_cmd_in_tg(ip,"telnetd &");
-}
+
 static inline BOOL parse_ip_list(const char *ip_list)
 {
 	char buff[256],*ip;	
@@ -1169,14 +1376,15 @@ static BOOL check_ini(void)
 #endif
 		break;
 		case SELECT_SPL_PROGRAMMING:		
-		case SELECT_MFG_PROGRAMMING:
+		
 		if(ini_file_info.ip_should_flash == 0)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"No ip specified.");
 			snprintf(error_msg,ERROR_INFO_MAX,"No ip specified in %s",ini_file);
 			error_code = EC_INI_IP_NOT_SPECIFY;
 			return FALSE;
-		}		
+		}
+		case SELECT_MFG_PROGRAMMING:		
 		if(ini_file_info.name_of_rescue_image[0] == 0)
 		{
 			snprintf(error_info,ERROR_INFO_MAX,"No rescue image specified.");
@@ -1192,8 +1400,7 @@ static BOOL check_ini(void)
 			return FALSE;
 		}
 		break;
-	}	
-
+	}
 	return TRUE;
 }
 static void ChangeProgressBar(int percent)
@@ -1656,43 +1863,6 @@ static void InitLinuxWindow(void)
 	
 	relative_x = GBOX1_START_X + V_GAPS;
     relative_y = GBOX1_START_Y;
-#if 0 && defined(DEVELOPMENT)
-	
-    hwndLinStaticDev = CreateWindow(TEXT("static"), "Devices list:",
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         relative_x, relative_y + WIN_STATIC_OFFSET,
-                         WIDTH_TEXT+30, HEIGHT_CONTROL,
-                         hwndLinPage, NULL,
-                         hInst, NULL);
-
-    relative_x += WIDTH_TEXT + 30;
-    hwndLinComboDevList = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("ComboBox"), NULL,
-                         WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE|
-                         CBS_AUTOHSCROLL,
-                         relative_x, relative_y,
-                         WIDTH_COMBO, HEIGHT_CONTROL*10,
-                         hwndLinPage, NULL,
-                         hInst, NULL); 
-
-    relative_x += WIDTH_COMBO + 10;
-    hwndLinBtnRefresh =  CreateWindow(TEXT("button"), "Refresh",
-                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                         relative_x, relative_y,
-                         WIDTH_BUTTON, HEIGHT_CONTROL,
-                         hwndLinPage, NULL,
-                         hInst, NULL);
-
-    relative_x += WIDTH_BUTTON + 65;
-    hwndLinBtnReset =    CreateWindow(TEXT("button"), "ResetToAppMode",
-                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                         relative_x, relative_y,
-                         WIDTH_BUTTON+WIDTH_BUTTON/2, HEIGHT_CONTROL,
-                         hwndLinPage, NULL,
-                         hInst, NULL);
-						 
-	relative_y	+= HEIGHT_CONTROL + Y_MARGIN;
-	max_Groupbox1_height -= relative_y;
-#endif
 
     console_print("hwndLinGroupReadme's dim: x=%d, y=%d, width=%d, height=%d\n",
             GBOX1_START_X, relative_y, max_Groupbox1_width, max_Groupbox1_height);
@@ -1799,8 +1969,8 @@ static void InitLinuxWindow(void)
     
 	console_print("hwndLinStaticImg's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_TEXT, HEIGHT_CONTROL);
-	hwndLinStaticImg = CreateWindow( TEXT ("static"), "    Image:",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+	hwndLinStaticImg = CreateWindow( TEXT ("static"), "Image:",
+            WS_CHILD | WS_VISIBLE | SS_RIGHT,
             relative_x, relative_y,
             WIDTH_TEXT, HEIGHT_CONTROL,
             hwndLinPage, NULL,
@@ -1822,37 +1992,10 @@ static void InitLinuxWindow(void)
 	
 	relative_x += WIDTH_EDIT + X_MARGIN;
 	relative_y += HEIGHT_CONTROL + Y_MARGIN;
+	
 
 #endif
 
-#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
-	
-	hwndLinIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndLinPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndDevLists, "hwndDevLists");
-	relative_x += WIDTH_BUTTON + X_MARGIN;
-	
-	hwndLinDevList = CreateWindowEx(WS_EX_CLIENTEDGE,TEXT("ComboBox"),"",
-			WS_CHILD | WS_VISIBLE |CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE | CBS_AUTOHSCROLL,
-			relative_x,relative_y,
-			WIDTH_COMBO, HEIGHT_CONTROL*5,
-            hwndLinPage, NULL,
-            hInst, NULL);
-	relative_x += WIDTH_COMBO + X_MARGIN;		
-	hwndLinBtnRefresh = CreateWindow(TEXT("button"), "Refresh",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndLinPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndLinBtnRefresh, "hwndLinBtnRefresh");
-#endif
 #ifdef DEVELOPMENT
 	partition_x_pos = GBOX1_START_X + V_GAPS;
 	partition_y_pos = relative_y + HEIGHT_CONTROL + Y_MARGIN;
@@ -1887,9 +2030,32 @@ static void InitLinuxWindow(void)
             hwndLinPage, NULL,
             hInst, NULL);
 
-    debug_positions(hwndLinBtnBrowser, "hwndLinBtnBrowser");    
-	
+    debug_positions(hwndLinBtnBrowser, "hwndLinBtnBrowser");  
+
+	relative_x = GBOX1_START_X + H_GAPS * 2;
     relative_y += HEIGHT_CONTROL + V_GAPS*2;
+	
+	hwndLinStaticSubNet = CreateWindow(TEXT ("static"), "IpAddr:",
+            WS_CHILD | WS_VISIBLE | SS_RIGHT,
+            relative_x, relative_y,
+            WIDTH_TEXT, HEIGHT_CONTROL,
+            hwndLinPage, NULL,
+            hInst, NULL);
+	relative_x += WIDTH_TEXT + H_GAPS * 2;
+	
+	hwndLinCommSubNet = create_and_init_ip_widget(relative_x, relative_y, hwndLinPage, hInst, def_subnet);
+  
+	relative_x += WIDTH_IPADDR + X_MARGIN;	
+	hwndLinStaticHost = CreateWindow(TEXT("static"), "Host:",
+			WS_CHILD | WS_VISIBLE | SS_RIGHT,
+			relative_x, relative_y + WIN_STATIC_OFFSET,
+			WIDTH_TEXT, HEIGHT_CONTROL,
+			hwndLinPage, NULL,
+			hInst, NULL);
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	hwndLinComboHost = create_and_init_host_combo(relative_x, relative_y, hwndLinPage, hInst, SELECT_LINUX_PROGRAMMING);
+	
+	relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
 	console_print("hwndLinBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
     hwndLinBtnDown = CreateWindow( TEXT ("button"), "Download",
@@ -1899,28 +2065,15 @@ static void InitLinuxWindow(void)
             hwndLinPage, NULL,
             hInst, NULL);
 	debug_positions(hwndLinBtnDown, "hwndLinBtnDown");
-
+	
 #endif    
 	
 	console_print("hwndLinBtnStop's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
-
-
+	
     relative_y += HEIGHT_CONTROL + V_GAPS*2;
-#ifdef DEVELOPMENT
-    console_print("hwndBtnEnableTelnet's dim: x=%d, y=%d, width=%d, height=%d\n",
-            relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
 
-    hwndBtnEnableTelnet = CreateWindow( TEXT("button"), "EnableTelnet",
-            WS_CHILD | WS_VISIBLE  | BS_PUSHBUTTON,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndLinPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndBtnEnableTelnet, "hwndBtnEnableTelnet");
-	relative_y += HEIGHT_CONTROL + V_GAPS*2;
-#elif defined MAINTAINMENT
+#if defined(MAINTAINMENT)
 	hwndCheckBoxUserdata = CreateWindow( TEXT("button"), "Keep User Data",
             WS_CHILD | WS_VISIBLE | BS_CHECKBOX,
             relative_x-4*X_MARGIN, relative_y,
@@ -1931,6 +2084,7 @@ static void InitLinuxWindow(void)
     relative_y += HEIGHT_CONTROL-5 + V_GAPS;
 	SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default checked
 #endif
+
 #ifndef U3_LIB	
     console_print("hwndCheckBoxSkipBatCheck's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x-4*X_MARGIN, relative_y, WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5);
@@ -2320,8 +2474,8 @@ static void InitMFGWindow(void)
 	
 	console_print("hwndMFGStaticImg's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_TEXT, HEIGHT_CONTROL);
-	hwndMFGStaticImg = CreateWindow( TEXT ("static"), "    Image:",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
+	hwndMFGStaticImg = CreateWindow( TEXT ("static"), "Image:",
+            WS_CHILD | WS_VISIBLE | SS_RIGHT,
             relative_x, relative_y,
             WIDTH_TEXT, HEIGHT_CONTROL,
             hwndMFGPage, NULL,
@@ -2344,35 +2498,6 @@ static void InitMFGWindow(void)
 	relative_x += WIDTH_EDIT + X_MARGIN;
 	relative_y += HEIGHT_CONTROL + Y_MARGIN;
 
-#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
-	
-	hwndMFGIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndMFGPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndDevLists, "hwndDevLists");
-	relative_x += WIDTH_BUTTON + X_MARGIN;
-	
-	hwndMFGDevList = CreateWindowEx(WS_EX_CLIENTEDGE,TEXT("ComboBox"),"",
-			WS_CHILD | WS_VISIBLE |CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE | CBS_AUTOHSCROLL,
-			relative_x,relative_y,
-			WIDTH_COMBO, HEIGHT_CONTROL*5,
-            hwndMFGPage, NULL,
-            hInst, NULL);
-	relative_x += WIDTH_COMBO + X_MARGIN;		
-	hwndMFGBtnRefresh = CreateWindow(TEXT("button"), "Refresh",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndMFGPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndMFGBtnRefresh, "hwndMFGBtnRefresh");
-#endif
-
     relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     relative_y = start_y_of_Groupbox2;
     relative_y += V_GAPS + HEIGHT_TAG;
@@ -2394,7 +2519,18 @@ static void InitMFGWindow(void)
 	
     console_print("hwndMFGBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
-
+			
+	relative_x = GBOX1_START_X + X_MARGIN;		
+	/* hwndMFGStaticSubNet = CreateWindow(TEXT ("static"), "IpAddr:",
+            WS_CHILD | WS_VISIBLE | SS_RIGHT,
+            relative_x, relative_y,
+            WIDTH_TEXT, HEIGHT_CONTROL,
+            hwndMFGPage, NULL,
+            hInst, NULL); */
+	relative_x += WIDTH_TEXT +X_MARGIN;
+	//hwndMFGCommSubNet = create_and_init_ip_widget(relative_x, relative_y, hwndMFGPage, hInst, def_subnet);
+		
+	relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     hwndMFGBtnDown = CreateWindow( TEXT ("button"), "Download",
             WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON ,
             relative_x, relative_y,
@@ -2437,7 +2573,7 @@ static void InitMFGWindow(void)
 /* init utils window */
 static BOOL InitUtilsWindow(void)
 {
-	#define WIDTH_IPADDR	200
+	
 	int page_start_x = PAGE_START_X;
 	int page_start_y = (HEIGHT_TAG+Y_MARGIN);
 	
@@ -2459,9 +2595,7 @@ static BOOL InitUtilsWindow(void)
     int Groupbox2_height = HEIGHT_CONTROL * 2 + client_gap * 2;
 		  
     int relative_x = Groupbox1_start_x + X_MARGIN;//page_start_x;
-    int relative_y = page_start_y;
-	
-	LPARAM def_ipaddr = MAKEIPADDRESS(10, 10, 0, 12);
+    int relative_y = page_start_y;	
  
     hwndUtilsPage = CreateWindowEx(0, szAppName, TEXT(""),
             WS_CHILD,
@@ -2470,7 +2604,7 @@ static BOOL InitUtilsWindow(void)
             hwndTab, NULL, hInst, NULL);
 	printf("page_start_x = %d\npage_start_y = %d\n", page_start_x, page_start_y);
 	printf("page_width = %d\npage_height = %d\n", page_width, page_height);
-	hwndStaticDeviceIp = CreateWindow(TEXT("static"), "Device Ip:",
+	hwndStaticDeviceSubNet = CreateWindow(TEXT("static"), "IpAddr:",
 			WS_CHILD | WS_VISIBLE | SS_RIGHT,
 			relative_x, relative_y + WIN_STATIC_OFFSET,
 			WIDTH_TEXT, HEIGHT_CONTROL,
@@ -2479,16 +2613,27 @@ static BOOL InitUtilsWindow(void)
 			
 	relative_x += WIDTH_TEXT + X_MARGIN;
 	
-	hwndCommDeviceIp = CreateWindowEx(WS_EX_CLIENTEDGE, WC_IPADDRESS, NULL,
-			WS_CHILD | WS_VISIBLE ,
-			relative_x, relative_y,
-			WIDTH_IPADDR, HEIGHT_CONTROL,
+	hwndUtilsIpAddrDeviceSubNet = create_and_init_ip_widget(relative_x, relative_y, hwndUtilsPage, hInst, def_subnet);	
+
+	relative_x += WIDTH_IPADDR + X_MARGIN;
+	hwndUtilsStaticHost = CreateWindow(TEXT("static"), "Host:",
+			WS_CHILD | WS_VISIBLE | SS_RIGHT,
+			relative_x, relative_y + WIN_STATIC_OFFSET,
+			WIDTH_TEXT, HEIGHT_CONTROL,
 			hwndUtilsPage, NULL,
 			hInst, NULL);
-	/*set default ip address*/
+	relative_x += WIDTH_TEXT + X_MARGIN;
+	hwndUtilsComboHost = create_and_init_host_combo(relative_x, relative_y, hwndUtilsPage, hInst, SELECT_UTILS);
 	
-	SendMessage(hwndCommDeviceIp, IPM_SETADDRESS, 0, def_ipaddr);	
-	hwndGroupChangeIp = CreateWindow(TEXT("button"), "ChangeIp",
+	relative_x = Groupbox1_start_x + Groupbox1_width - WIDTH_BUTTON - 2*X_MARGIN -5;
+	hwndUtilsEnableTelnet = CreateWindow(TEXT("button"), "EnableTelnet",
+			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+			relative_x, relative_y,
+			WIDTH_BUTTON, HEIGHT_CONTROL,
+			hwndUtilsPage, NULL,
+			hInst, NULL);
+			
+	hwndGroupChangeSubNet = CreateWindow(TEXT("button"), "ChangeIpAddr",
 			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,			
 			Groupbox1_start_x, Groupbox1_start_y,
 			Groupbox1_width, Groupbox1_height,
@@ -2498,7 +2643,7 @@ static BOOL InitUtilsWindow(void)
 	relative_x = Groupbox1_start_x + X_MARGIN;
     relative_y = Groupbox1_start_y + client_gap;
 	
-	hwndStaticChangetoIp = CreateWindow(TEXT("static"), "ChangeTo:",
+	hwndStaticChangto = CreateWindow(TEXT("static"), "ChangeTo:",
 			WS_CHILD | WS_VISIBLE | SS_RIGHT,
 			relative_x, relative_y + WIN_STATIC_OFFSET,
 			WIDTH_TEXT, HEIGHT_CONTROL,
@@ -2507,13 +2652,7 @@ static BOOL InitUtilsWindow(void)
 			
 	relative_x += WIDTH_TEXT + X_MARGIN;
 	
-	hwndCommChangetoIp = CreateWindowEx(WS_EX_CLIENTEDGE, WC_IPADDRESS, NULL,
-			WS_CHILD | WS_VISIBLE,
-			relative_x, relative_y,
-			WIDTH_IPADDR, HEIGHT_CONTROL,
-			hwndUtilsPage, NULL,
-			hInst, NULL);
-	SendMessage(hwndCommChangetoIp, IPM_SETADDRESS, 0, def_ipaddr);
+	hwndUtilsIpAddrChangeto = create_and_init_ip_widget(relative_x, relative_y, hwndUtilsPage, hInst, def_subnet);
 	
 	relative_x += WIDTH_IPADDR +  X_MARGIN;
 	
@@ -2728,6 +2867,83 @@ static int linux_download(void)
 	dump_time();
 	log_print("linux_download() called.\n");
 	
+	//set ip info into ini_file_info
+	//no change for SPL burn mode yet
+	int selection = -1;
+	DWORD specified_ip;
+	DWORD mask;
+	char ipstr_master[16];
+	char initrd_ip[16];
+	char ipstr[16];
+	DWORD dword_ip;
+	
+	if(burn_mode == SELECT_LINUX_PROGRAMMING)
+	{		
+		selection = ComboBox_GetCurSel(hwndLinComboHost);
+		SendMessage(hwndLinCommSubNet, IPM_GETADDRESS, 0, (LPARAM)&specified_ip);
+		DWORD_to_ipstr(specified_ip, ipstr, 16);
+		log_print("selection = %d, input_ip = %s\n", selection, ipstr);
+		if(selection == SEL_INTRANET)
+		{
+			mask = hosts[SEL_ALL].intranet_addr;
+			ini_file_info.ip_should_flash = 1;			
+			if((retval = get_socid(ipstr)) < 0)
+				goto linux_download_error;
+			
+			ini_file_info.dword_ip[0] = (mask & specified_ip) | (~mask & hosts[retval].intranet_addr);
+			DWORD_to_ipstr(ini_file_info.dword_ip[0], ini_file_info.ip[0], 16);
+								
+			if(retval = exec_script_in_target(ipstr, "echo upg > /sys/sysdevs/bootmode"))
+				goto linux_download_error;			
+			if(retval = execute_cmd_in_tg(ipstr, "reboot"))
+				goto linux_download_error;
+			
+			//set ipstr_master
+			strncpy(ipstr_master, ini_file_info.ip[0], 16);
+			
+			SetDynamicInfo("Wait for reboot");
+			Sleep(5000);//wait for target enter into upg mode
+			StopDynamicInfo();
+		}
+		else
+		{			
+			int host_count = 0;
+			mask = hosts[SEL_ALL].eth_addr;			
+			if(selection == SEL_ALL || selection == SEL_M1S1) //slave first
+			{				
+				ini_file_info.dword_ip[host_count] = hosts[SEL_M1S1].eth_addr;
+				DWORD_to_ipstr(ini_file_info.dword_ip[host_count], ini_file_info.ip[host_count], 16);
+				
+				DWORD_to_ipstr((mask & specified_ip) | (~mask & hosts[SEL_M1S1].eth_addr), ipstr, 16);
+				if(retval = exec_script_in_target(ipstr, "echo upg > /sys/sysdevs/bootmode"))
+					goto linux_download_error;				
+				++host_count;
+				
+			}
+			if(selection == SEL_ALL || selection == SEL_M1S2) //master
+			{
+				ini_file_info.dword_ip[host_count] = hosts[SEL_M1S2].eth_addr;
+				DWORD_to_ipstr(ini_file_info.dword_ip[host_count], ini_file_info.ip[host_count], 16);
+				//exec_script_in_target(ini_file_info.ip[host_count], "echo upg > /sys/sysdevs/bootmode");	
+				++host_count;
+			}
+			ini_file_info.ip_should_flash = host_count;
+			DWORD_to_ipstr((mask & specified_ip) | (~mask & hosts[SEL_M1S2].eth_addr), ipstr_master, 16);
+			if(retval = exec_script_in_target(ipstr_master, "echo upg > /sys/sysdevs/bootmode"))
+				goto linux_download_error;
+			
+			if(retval = execute_cmd_in_tg(ipstr_master, "reboot"))
+				goto linux_download_error;
+			
+			//reset ipstr_master
+			DWORD_to_ipstr(hosts[SEL_M1S2].eth_addr, ipstr_master, 16);
+			SetDynamicInfo("Wait for reboot");
+			Sleep(5000);//wait for target enter into upg mode
+			StopDynamicInfo();
+		}
+		
+	}	
+	
 	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
 	{		
 		ip = ini_file_info.ip[i];
@@ -2739,8 +2955,11 @@ static int linux_download(void)
 		}
 		log_print("ip = %s\n",ip);
 #endif
-		SetDynamicInfo(LINUX_INIT);
-		retval = linux_init(ip);
+				
+		/*master is the last initrd_ip*/
+		strncpy(initrd_ip, ini_file_info.ip[i], 16);
+		SetDynamicInfo(LINUX_INIT);	
+		retval = linux_init(initrd_ip);//ip changeto default ip_addr
 		StopDynamicInfo();	
 		if(retval < 0)
 		{			
@@ -2749,21 +2968,27 @@ static int linux_download(void)
 		if(retval == 1)//Waiting for linux device insert
 		{
 			listening_on = IS_LISTENING_ON_LINUX;
-			SetDynamicInfo("Waiting for reboot");
+			SetDynamicInfo("Waiting for linux device");
 			if(WAIT_TIMEOUT == WaitForSingleObject(g_lan_event,10000))
 			{
 				StopDynamicInfo();
 				listening_on = IS_LISTENING_ON_NOTHING;
-				snprintf(error_info,ERROR_INFO_MAX,"Waiting for reboot timeout.");
-				snprintf(error_msg,ERROR_INFO_MAX,"Waiting for reboot timeout.");
+				snprintf(error_info,ERROR_INFO_MAX,"Waiting for linux device timeout.");
+				snprintf(error_msg,ERROR_INFO_MAX,"Waiting for linux device timeout.");
 				error_code = EC_WAIT_REBOOT_TIMEOUT;
 				goto linux_download_error;
 			}			
 			ResetEvent(g_lan_event);
-			Sleep(10000);//wait for device reboot
+			Sleep(10000);//wait for device
 			StopDynamicInfo();
 			listening_on = IS_LISTENING_ON_NOTHING;
 		}
+		if(burn_mode == SELECT_LINUX_PROGRAMMING)
+		{
+			/* save network config file*/		
+			save_net_config(initrd_ip);					
+		}
+		
 		transfer_start();/*start a progress thread*/	
 		dump_time();
 #ifdef DEVELOPMENT
@@ -2807,8 +3032,7 @@ static int linux_download(void)
 			log_print("burnpartition() : partition_selected = 0x%04x.\n",0x03E0);
 			retval = burnpartition(0x03E0);
 		#endif
-			transfer_complete();	
-			
+			transfer_complete();			
 		}
 		
 #endif
@@ -2817,9 +3041,19 @@ static int linux_download(void)
 			snprintf(error_info,ERROR_INFO_MAX,"Linux download failed!");
 			snprintf(error_msg,ERROR_INFO_MAX,"Linux download failed! Error code is %s.",get_error_info(retval));
 			goto linux_download_error;
-		}	
+		}
+		//change ip back
+		//spl mode will change ip back that specified in ini_file
+		/* restore network config file*/
+		if(burn_mode == SELECT_LINUX_PROGRAMMING)
+		{		
+			restore_net_config(initrd_ip);			
+		}
+		
 	}
-	
+	//reboot master to reboot every soc		
+	execute_cmd_in_tg(ipstr_master, "reboot");	
+	//log_print("return from reboot, ipstr_master = %s\n", ipstr_master);
 	return 0;
 linux_download_error:	
 	return retval;
@@ -3028,7 +3262,7 @@ static void mfg_download_complete_cb(int retval,void *private_data)
 static BOOL OnBtnBrowser(void)
 {
 	EnableWindow(hwndTab,FALSE);	
-	if(GetFileName(BrowserImage,256) == TRUE)
+	if(GetFileName(BrowserImage, 256) == TRUE)
 	{		
 		SetWindowText(hwndStaticBrowser,BrowserImage);
 		if(get_image_info(BrowserImage) == FALSE)
@@ -3061,113 +3295,46 @@ static int OnBtnRefreshClick(void)//unused
 }
 static int OnBtnEnableTelnetClick(void)
 {
-#if (defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
-	int ip_count = 4;
-#elif defined(CONFIG_PROJECT_REPEATER_BBA)
-	int ip_count = 2;
-#else
-	int ip_count = 1;
-#endif	
-	int error_flag = 0;
-	int i;
-	int retval = -1;
-	/*save button LinBtnDown's status*/
-	WINDOWINFO info_for_btn_down;
-	info_for_btn_down.cbSize = sizeof(WINDOWINFO);
-	GetWindowInfo(hwndLinBtnDown,&info_for_btn_down);
-	update_ui_resources(FALSE);
+	int ret = 0;
+	char target_ip[16];
+	DWORD subnet;
+	EnableWindow(hwndTab, FALSE);
+	EnableWindow(hwndUtilsEnableTelnet, FALSE);
 	
-	SetDynamicInfo("EnableTelnet");
-	//EnableTelnet for all ip
-	for(i = 0; i < ip_count; ++i)
+	int host = ComboBox_GetCurSel(hwndUtilsComboHost);
+	//get ip int
+	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0, (LPARAM)&subnet);
+	subnet &= subnet_mask;
+	if(host == SEL_ALL)
 	{
-		retval = EnableTelnet(ip_addr[i]);
-		if(retval != 0)
-			error_flag |= 1<<i;
-	}	
-	StopDynamicInfo();
-	
-	if(error_flag != 0)
-	{
-		/*for example:10.10.0.12 10.10.12.11 success,but 10.10.12.21 10.10.12.22 Failed. it will be output like this
-		* EnableTelnet 10.10.12.21 10.10.12.22 Failed.
-		*/
-		char info[256];
-		strcpy(info,"EnableTelnet ");
-		for(i = 0; i < ip_count; ++i)
-		{			
-			if(error_flag & (1<<i))
-			{
-				strcat(info,ip_addr[i]);
-				strcat(info," ");
-			}
+		int i;
+		for(i = 1; i < MAX_HOST + 1; ++i)
+		{
+			DWORD_to_ipstr(subnet | hosts[i].eth_addr, target_ip, 16);
+			if(ret = EnableTelnet(target_ip))
+				break;			
 		}
-		strcat(info,"Failed.");
-		SetWindowText(hwndInfo,info);
-		log_print("%s\n",info);
-		//ERROR_MESSAGE("EnableTelnet failed! error code is %s.",get_error_info(retval));
+	}
+	else{
+		DWORD_to_ipstr(subnet | hosts[host].eth_addr, target_ip, 16);		
+		ret = EnableTelnet(target_ip);
+	}
+	if(ret){
+		SetWindowText(hwndInfo, "EnableTelnet Failed");
+		ERROR_MESSAGE("EnableTelnet Failed");
 	}
 	else
-	{
-		log_print("EnableTelnet Success.\n");
-		SetWindowText(hwndInfo,"EnableTelnet Success.");
-	}
-	update_ui_resources(TRUE);
-	/*restore LinBtnDown's status*/
-	EnableWindow(hwndLinBtnDown,!(info_for_btn_down.dwStyle & WS_DISABLED));
-	
+		SetWindowText(hwndInfo, "EnableTelnet Success");
+	EnableWindow(hwndUtilsEnableTelnet, TRUE);
+	EnableWindow(hwndTab, TRUE);
 	return 0;
-}
-
-static int OnBtnFileDownload(void)
-{	
-	return 0;
-}
-
-static int OnBtnFileUpload(void)
-{	
-	return 0;
-}
-/*********************File Transfer Button Process***********************/
-
-static BOOL ProcessFileTransferCommand(WPARAM wParam, LPARAM lParam)
-{
-	HWND hwnd = (HWND)lParam;
-	char file_for_pc[MAX_PATH];
-	if(hwnd == hwndFdButtonBrowse)
-	{
-		if(GetFileName(file_for_pc,MAX_PATH) == TRUE)
-		{
-			SetWindowText(hwndFdStaticSrcFile,file_for_pc);
-			EnableWindow(hwndFdButtonDownload,TRUE);			
-		}
-	}
-	else if(hwnd == hwndFdButtonDownload)
-	{
-		g_background_func = OnBtnFileDownload;
-		WAKE_THREAD_UP();
-	}
-	else if(hwnd == hwndFuButtonBrowse)
-	{
-		if(GetFileName(file_for_pc,MAX_PATH) == TRUE)
-		{
-			SetWindowText(hwndFuStaticDestFile,file_for_pc);
-			EnableWindow(hwndFuButtonUpload,TRUE);
-		}
-	}
-	else if(hwnd == hwndFuButtonUpload)
-	{
-		g_background_func = OnBtnFileUpload;
-		WAKE_THREAD_UP();
-	}
-	return TRUE;
 }
 
 /* utils command  */
 static BOOL ProcessUtilsCommand(WPARAM wParam, LPARAM lParam)
 {
 	HWND hwnd = (HWND)lParam;
-	DWORD device_ip_int, changeto_ip;	
+	LPARAM device_ip_int, changeto_ip;	
 	char dsp_image[MAX_PATH];
 	
 	if(hwnd == hwndBtnDspImageBrowser)
@@ -3189,6 +3356,10 @@ static BOOL ProcessUtilsCommand(WPARAM wParam, LPARAM lParam)
 	{
 		g_background_func = OnBtnDspDownload;
 		g_complete_func = download_dsp_image_complete_cb;
+	}
+	else if(hwnd == hwndUtilsEnableTelnet)
+	{
+		g_background_func = OnBtnEnableTelnetClick;		
 	}
 	WAKE_THREAD_UP();	
 	return TRUE;
@@ -3246,12 +3417,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 			ERROR_MESSAGE("No partition select.");			
 			return TRUE;
 		}
-#endif
-		if(check_ini() == FALSE)
-		{
-			SendMessage(hwndMain,WM_ERROR,-1,0);
-			return TRUE;
-		}
+#endif		
 		g_background_func = linux_download;
 		g_complete_func = linux_download_complete_cb;		
 		g_processing = TRUE;
@@ -3259,23 +3425,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		dump_download_varibles();
 		log_print("Waiting for linux download..\n");
 		
-	}
-	else if(hwnd == hwndBtnEnableTelnet)
-	{
-		log_print("\n");
-		dump_time();
-		log_print("button BtnEnableTelnet clicked.\n");
-		CLEAR_INFO();
-		g_background_func = OnBtnEnableTelnetClick;
-	}
-	else if(hwnd == hwndLinBtnRefresh)
-	{
-		log_print("\n");
-		dump_time();
-		log_print("button LinBtnRefresh clicked.\n");
-		CLEAR_INFO();
-		g_background_func = OnBtnRefreshClick;
-	}
+	}	
 	else 
 		return FALSE;
 	WAKE_THREAD_UP();
@@ -3658,179 +3808,6 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
     }
 
     return FALSE;
-}
-static void InitFileTransferWindow(void)
-{
-#ifdef	DEVELOPMENT
-    int relative_x = 0;
-    int relative_y = 0;
-    int temp = 0;
-
-    hwndFileTransferPage = CreateWindowEx(0, szAppName, TEXT (""),
-                         WS_VISIBLE | WS_CHILD,
-                         TAB_CLIENT_START_X, TAB_CLIENT_START_Y,
-                         TAB_CLIENT_WIDTH, TAB_CLIENT_HEIGHT,
-                         hwndTab, NULL, hInst, NULL);
-
-    /***********************************************************/
-    /*                                                         */
-    /***********************************************************/
-	hwndFtNotice = CreateWindow(TEXT("static"),TEXT("Notice : This Page is for Linux Target."),
-						 WS_CHILD | WS_VISIBLE | SS_LEFT,
-						 FILE_DL_START_X,FILE_DL_START_Y,
-						 WIDTH_EDIT_NAND,HEIGHT_CONTROL,
-						 hwndFileTransferPage,NULL,
-						 hInst,NULL);
-						 
-    relative_y = FILE_DL_START_Y + HEIGHT_CONTROL + Y_MARGIN;
-
-    hwndFdGroupBox = CreateWindow(TEXT("button"), TEXT("File Download"),
-                         WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-                         FILE_DL_START_X, relative_y,
-                         FILE_DL_WIDTH, FILE_DL_HEIGHT,
-                         hwndFileTransferPage , NULL,
-                         hInst, NULL);
-    hwndFdSrcFile = CreateWindow(TEXT("static"), TEXT("Src File:"),
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         FILE_DL_START_X + X_MARGIN, relative_y+Y_MARGIN*3+WIN_STATIC_OFFSET,
-                         WIDTH_TEXT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x = FILE_DL_START_X + X_MARGIN + WIDTH_TEXT;
-    relative_y += Y_MARGIN*3;
-
-    hwndFdStaticSrcFile = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("static"), NULL,
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         relative_x + X_MARGIN, relative_y,
-                         WIDTH_EDIT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x += X_MARGIN + WIDTH_EDIT;
-                
-    hwndFdButtonBrowse = CreateWindow(TEXT ("button"), "Browse...",
-                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                         relative_x + X_MARGIN, relative_y,
-                         WIDTH_BUTTON, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    temp = relative_x + X_MARGIN;
-    relative_y += HEIGHT_CONTROL + Y_MARGIN*2;
-
-    hwndFdDestFile = CreateWindow(TEXT("static"), "Dest Path:",
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         FILE_DL_START_X + X_MARGIN, relative_y + WIN_STATIC_OFFSET,
-                         WIDTH_TEXT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x = FILE_DL_START_X + X_MARGIN + WIDTH_TEXT;
-
-    hwndFdEditDestFile = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("edit"), NULL,
-                         WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL,
-                         relative_x + X_MARGIN, relative_y,
-                         WIDTH_EDIT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x += X_MARGIN + WIDTH_EDIT;
-
-    
-    hwndFdButtonDownload = CreateWindow(TEXT("button"), "Download",
-                         WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON,
-                         temp, relative_y,
-                         WIDTH_BUTTON, HEIGHT_CONTROL,
-                        hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-	relative_y += HEIGHT_CONTROL + Y_MARGIN;
-	hwndFdNotify = CreateWindow(TEXT("static"), TEXT(""),
-                         WS_CHILD | WS_VISIBLE ,
-                         FILE_DL_START_X + X_MARGIN, relative_y,
-                         WIDTH_EDIT_NAND, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-    /***********************************************************/
-    /*                                                         */
-    /***********************************************************/
-    hwndFuGroupBox = CreateWindow(TEXT("button"), "File Upload",
-                         WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-                         FILE_DL_START_X, FILE_DL_START_Y + HEIGHT_CONTROL + 2*Y_MARGIN + FILE_DL_HEIGHT,
-                         FILE_DL_WIDTH, FILE_DL_HEIGHT,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_y = FILE_DL_START_Y + HEIGHT_CONTROL + 3*Y_MARGIN + FILE_DL_HEIGHT;
-
-    hwndFuSrcFile = CreateWindow(TEXT("static"), "Src File:",
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         FILE_DL_START_X + X_MARGIN, relative_y + 3*Y_MARGIN + WIN_STATIC_OFFSET,
-                         WIDTH_TEXT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x = FILE_DL_START_X + X_MARGIN + WIDTH_TEXT;
-    relative_y += 3*Y_MARGIN;
-
-    hwndFuEditSrcFile = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("edit"), NULL,
-                         WS_CHILD | WS_VISIBLE | ES_LEFT | ES_AUTOHSCROLL,
-                         relative_x + X_MARGIN, relative_y,
-                         WIDTH_EDIT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x += X_MARGIN + WIDTH_EDIT;
-                
-    hwndFuButtonUpload = CreateWindow(TEXT("button"), "Upload",
-                         WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON,
-                         relative_x + X_MARGIN, relative_y,
-                         WIDTH_BUTTON, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-    
-    relative_y = FILE_DL_START_Y + HEIGHT_CONTROL + 3*Y_MARGIN + FILE_DL_HEIGHT + 3*Y_MARGIN;
-
-    hwndFuDestFile = CreateWindow(TEXT("static"), "Dest File:",
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         FILE_DL_START_X + X_MARGIN, relative_y + HEIGHT_CONTROL + Y_MARGIN*2+WIN_STATIC_OFFSET,
-                         WIDTH_TEXT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_y += HEIGHT_CONTROL + Y_MARGIN*2;
-    relative_x = FILE_DL_START_X + X_MARGIN + WIDTH_TEXT;
-
-
-    hwndFuStaticDestFile = CreateWindowEx(WS_EX_CLIENTEDGE,TEXT("static"), NULL,
-                         WS_CHILD | WS_VISIBLE | SS_LEFT,
-                         relative_x + X_MARGIN, relative_y+WIN_STATIC_OFFSET,
-                         WIDTH_EDIT, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    relative_x += WIDTH_EDIT + X_MARGIN;
-                             
-	
-    hwndFuButtonBrowse = CreateWindow(TEXT("button"), "Browse...",
-                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                         temp, relative_y,
-                         WIDTH_BUTTON, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-	relative_y += HEIGHT_CONTROL + Y_MARGIN;
-	hwndFuNotify = CreateWindow(TEXT("static"), TEXT(""),
-                         WS_CHILD | WS_VISIBLE ,
-                         FILE_DL_START_X + X_MARGIN, relative_y,
-                         WIDTH_EDIT_NAND, HEIGHT_CONTROL,
-                         hwndFileTransferPage, NULL,
-                         hInst, NULL);
-
-    ShowWindow(hwndFileTransferPage, FALSE);
-
-#endif
-    return;
 }
 
 /*

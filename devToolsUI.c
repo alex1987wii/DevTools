@@ -1818,7 +1818,7 @@ static void InitLinuxWindow(void)
 	relative_y += HEIGHT_CONTROL + V_GAPS*2;
 #elif defined MAINTAINMENT
 	hwndCheckBoxUserdata = CreateWindow( TEXT("button"), "Keep User Data",
-            WS_CHILD | WS_VISIBLE | BS_CHECKBOX,
+            WS_CHILD  | BS_CHECKBOX,
             relative_x-4*X_MARGIN, relative_y,
 			WIDTH_BUTTON + X_MARGIN*6-5, HEIGHT_CONTROL-5,
             //WIDTH_BUTTON*2, HEIGHT_CONTROL,

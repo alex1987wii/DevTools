@@ -489,7 +489,7 @@ static HWND    hwndUtilsPage, hwndGroupChangeSubNet, hwndGroupDspImage, hwndUtil
 static HWND    hwndStaticDeviceSubNet, hwndUtilsStaticHost, hwndStaticChangto, hwndStaticDspImage;
 static HWND    hwndUtilsIpAddrDeviceSubNet, hwndUtilsComboHost, hwndUtilsIpAddrChangeto, hwndEditDspImage, hwndUtilsComboHost;
 static HWND	   hwndBtnChange, hwndBtnDspImageBrowser, hwndBtnDspDownload;
-static HWND    hwndUtilsEnableTelnet;
+static HWND    hwndBtnReboot, hwndBtnEnableTelnet;
 /* Popup window handle definitions */
 static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
 
@@ -630,6 +630,7 @@ static inline int RebootTarget(const char *ip)
 {	
 	return execute_cmd_in_tg(ip,"reboot");
 }
+
 static inline int EnableTelnet(const char *ip)
 {
 	return execute_cmd_in_tg(ip,"telnetd &");
@@ -926,7 +927,7 @@ static int download_dsp_image(LPARAM target_ip, char *local_image)
 }
 static int OnBtnDspDownload(void)
 {
-	int ret = 0;
+	int ret = -1;
 	LPARAM target_ip;
 	char dsp_image[MAX_PATH];	
 	EnableWindow(hwndTab, FALSE);
@@ -951,7 +952,33 @@ static void download_dsp_image_complete_cb(int retval, void *private_data)
 	}
 	else
 		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
-}	
+}
+static int OnBtnReboot(void)
+{
+	int ret = -1;
+	LPARAM target_ip;
+	char ipstr[16];	
+	EnableWindow(hwndTab, FALSE);
+	EnableWindow(hwndBtnReboot, FALSE);
+	//get ip
+	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0, (LPARAM)&target_ip);
+	DWORD_to_ipstr((DWORD)target_ip, ipstr, 16);
+	ret = RebootTarget(ipstr);	
+	EnableWindow(hwndBtnReboot, TRUE);
+	EnableWindow(hwndTab, TRUE);
+	return ret;	
+}
+static void reboot_target_complete_cb(int retval, void *private_data)
+{
+	if(retval == 0)
+	{
+		dump_time();
+		log_print("Reboot success.\n");
+		SetWindowText(hwndInfo,"Reboot success.");
+	}
+	else
+		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+}
 /*********************************************************/
 
 static inline void SetDynamicInfo(const char *info)
@@ -2626,7 +2653,7 @@ static BOOL InitUtilsWindow(void)
 	hwndUtilsComboHost = create_and_init_host_combo(relative_x, relative_y, hwndUtilsPage, hInst, SELECT_UTILS);
 	
 	relative_x = Groupbox1_start_x + Groupbox1_width - WIDTH_BUTTON - 2*X_MARGIN -5;
-	hwndUtilsEnableTelnet = CreateWindow(TEXT("button"), "EnableTelnet",
+	hwndBtnReboot = CreateWindow(TEXT("button"), "Reboot",
 			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 			relative_x, relative_y,
 			WIDTH_BUTTON, HEIGHT_CONTROL,
@@ -3297,35 +3324,21 @@ static int OnBtnEnableTelnetClick(void)
 {
 	int ret = 0;
 	char target_ip[16];
-	DWORD subnet;
+	DWORD ip;
 	EnableWindow(hwndTab, FALSE);
-	EnableWindow(hwndUtilsEnableTelnet, FALSE);
+	EnableWindow(hwndBtnEnableTelnet, FALSE);	
 	
-	int host = ComboBox_GetCurSel(hwndUtilsComboHost);
-	//get ip int
-	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0, (LPARAM)&subnet);
-	subnet &= subnet_mask;
-	if(host == SEL_ALL)
-	{
-		int i;
-		for(i = 1; i < MAX_HOST + 1; ++i)
-		{
-			DWORD_to_ipstr(subnet | hosts[i].eth_addr, target_ip, 16);
-			if(ret = EnableTelnet(target_ip))
-				break;			
-		}
-	}
-	else{
-		DWORD_to_ipstr(subnet | hosts[host].eth_addr, target_ip, 16);		
-		ret = EnableTelnet(target_ip);
-	}
+	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0, (LPARAM)&ip);	
+	DWORD_to_ipstr(ip, target_ip, 16);		
+	ret = EnableTelnet(target_ip);
+	
 	if(ret){
 		SetWindowText(hwndInfo, "EnableTelnet Failed");
 		ERROR_MESSAGE("EnableTelnet Failed");
 	}
 	else
 		SetWindowText(hwndInfo, "EnableTelnet Success");
-	EnableWindow(hwndUtilsEnableTelnet, TRUE);
+	EnableWindow(hwndBtnEnableTelnet, TRUE);
 	EnableWindow(hwndTab, TRUE);
 	return 0;
 }
@@ -3357,9 +3370,10 @@ static BOOL ProcessUtilsCommand(WPARAM wParam, LPARAM lParam)
 		g_background_func = OnBtnDspDownload;
 		g_complete_func = download_dsp_image_complete_cb;
 	}
-	else if(hwnd == hwndUtilsEnableTelnet)
+	else if(hwnd == hwndBtnReboot)
 	{
-		g_background_func = OnBtnEnableTelnetClick;		
+		g_background_func = OnBtnReboot;
+		g_complete_func = reboot_target_complete_cb;
 	}
 	WAKE_THREAD_UP();	
 	return TRUE;

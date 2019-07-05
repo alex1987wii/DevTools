@@ -23,8 +23,8 @@
 
 # config varibles
 PROJECT=$(strip BR01_2ND)
-VERSION=v02p01a
-valid_proj=BR01 BR01_2ND 
+VERSION=v02p01b
+valid_proj=BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
     $(foreach pro,$(valid_proj),$(warning $(pro)))

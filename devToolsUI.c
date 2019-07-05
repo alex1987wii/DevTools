@@ -2609,13 +2609,13 @@ static BOOL InitUtilsWindow(void)
     int page_width = rcClient.right;
     int page_height = rcClient.bottom - page_start_y;
 	
-	int Groupbox1_start_x = page_start_x + X_MARGIN;
+	int Groupbox1_start_x = page_start_x;
 	int Groupbox1_start_y = page_start_y + Y_MARGIN + HEIGHT_CONTROL;//leave one line to add device ip controller
 	
-    int Groupbox1_width = page_width- 5*page_start_x;
+    int Groupbox1_width = page_width- 4*X_MARGIN;
     int Groupbox1_height = HEIGHT_CONTROL + client_gap * 2;
 
-	int Groupbox2_start_x = page_start_x + X_MARGIN;
+	int Groupbox2_start_x = page_start_x;
 	int Groupbox2_start_y = Groupbox1_start_y + Y_MARGIN + Groupbox1_height;
 	
     int Groupbox2_width = Groupbox1_width;
@@ -2652,7 +2652,7 @@ static BOOL InitUtilsWindow(void)
 	relative_x += WIDTH_TEXT + X_MARGIN;
 	hwndUtilsComboHost = create_and_init_host_combo(relative_x, relative_y, hwndUtilsPage, hInst, SELECT_UTILS);
 	
-	relative_x = Groupbox1_start_x + Groupbox1_width - WIDTH_BUTTON - 2*X_MARGIN -5;
+	relative_x = Groupbox1_start_x + Groupbox1_width - WIDTH_BUTTON - 2*X_MARGIN - 15;
 	hwndBtnReboot = CreateWindow(TEXT("button"), "Reboot",
 			WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 			relative_x, relative_y,
@@ -2969,7 +2969,11 @@ static int linux_download(void)
 			StopDynamicInfo();
 		}
 		
-	}	
+	}
+	else//set ipstr_master for MFG and SPL
+	{
+		DWORD_to_ipstr(hosts[SEL_M1S2].usb_addr, ipstr_master, 16);
+	}		
 	
 	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
 	{		

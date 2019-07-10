@@ -64,7 +64,7 @@
 #include "devToolsRes.h"
 #include "iniparser.h"
 #include "devToolsUI_private.h"
-
+#include "winlog.h"
 /*  ===========================================================================
  *  Macro definitions
  *  ===========================================================================
@@ -90,8 +90,7 @@ MessageBox(hwndMain,buff,TEXT("UI_DEBUG"),MB_ICONWARNING);}while(0)
 #define log_print(fmt,args...)		printf(fmt,##args)
 
 #elif (DEBUG_MODE == DEBUG_LOG)
-static FILE *log_fp = NULL;
-#define log_print(fmt,args...)		do{if(log_fp){fprintf(log_fp,fmt,##args);fflush(log_fp);}}while(0)
+#define log_print(fmt, ...)			log_info(fmt, ##__VA_ARGS__)
 #define console_print(fmt,args...)
 #endif
 
@@ -565,16 +564,11 @@ void ExitDebugConsole( void )
 #elif (DEBUG_MODE == DEBUG_LOG)
 BOOL InitDebugConsole( void )
 {   
-	log_fp = fopen(LOGFILE,"w+");
-	if(log_fp == NULL)
-		return FALSE;	
-    return TRUE;
+	return openlog(LOGFILE, LOG_INFO, LOG_OVERLAP) == 0;
 }
 void ExitDebugConsole( void )
 {	
-	if(log_fp)
-		fclose(log_fp);
-	return;
+	closelog();
 }
 
 #else
@@ -590,6 +584,8 @@ void ExitDebugConsole( void )
 }
 
 #endif
+
+#define dump_time()
 
 static inline int exec_script_in_target(const char *ip, const char *cmdlines)
 {
@@ -793,19 +789,10 @@ static inline void dump_project(void)
 	" tool for %s.\tVersion : %s.\n",PROJECT,VERSION);
 
 }
-#if (DEBUG_MODE == DEBUG_LOG)
-static void dump_time(void)
-{
-	static time_t current_time;
-	static char time_buff[256];
-	time(&current_time);
-	strftime(time_buff,256,"%Y/%m/%d\t%H:%M:%S\n",localtime(&current_time));
-	log_print("%s",time_buff);
-	//log_print("%s",asctime(localtime(&current_time)));
-}
-#else
-#define dump_time()
-#endif
+
+
+
+
 
 static inline void dump_ini_info(void)
 {
@@ -1367,7 +1354,7 @@ static inline BOOL parse_ip_list(const char *ip_list)
 }
 static inline BOOL parse_ini_file(const char *file)
 {	
-	char *ip_list,*image,*rescue_image;
+	const char *ip_list,*image,*rescue_image;
 	/*read the ini file and parse it into struct*/
 	/*clear ini information*/
 	memset(&ini_file_info,0,sizeof(ini_file_info));
@@ -1511,7 +1498,7 @@ static inline void DestoryProgressBar(void)
     return;
 }
 
-static char *get_error_info(unsigned short ec)
+static const char *get_error_info(unsigned short ec)
 {
     int i;	
 	/*first find it in ui_error_code_info table*/
@@ -1531,7 +1518,7 @@ static char *get_error_info(unsigned short ec)
 	/*not found*/
     return ec_not_found;
 }
-static char *get_short_info(unsigned short ec)
+static const char *get_short_info(unsigned short ec)
 {
 	int i;	
 	/*first find it in ui_error_code_info table*/

@@ -59,6 +59,7 @@ TARGET_PRODUCTION = UniNandFlashProgramming.exe
 WIN_TOOL_PATH=./output/$(PROJECT)
 LIBS=./$(LIB)/lib/libupgrade.dll
 UTILS=./utils #only for linux
+OBJS=./src/winlog.o
 
 DEPS = devToolsRes.h
 
@@ -71,6 +72,10 @@ all: clean ./lib/libiniparser.a $(TARGETS) install
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
 ./src/dictionary.o:./src/dictionary.c
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
+
+%.o:%.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+
 $(TARGET_MAINTAIN):resource_maintain.o devToolsUI_maintain.o $(OBJS)
 	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)
 

@@ -591,6 +591,7 @@ static inline int exec_script_in_target(const char *ip, const char *cmdlines)
 {
 	#define TMPFILE		"tmpfile.sh"
 	int ret = 0;
+	log_info("exec script in target %s -> %s", ip, cmdlines);
 	FILE *fp = fopen("./"TMPFILE, "wb+");
 	fwrite("#!/bin/sh\n", 1, strlen("#!/bin/sh\n"), fp);
 	fwrite(cmdlines,1, strlen(cmdlines), fp);
@@ -598,9 +599,9 @@ static inline int exec_script_in_target(const char *ip, const char *cmdlines)
 	if(ret = download_file(ip,"./"TMPFILE, "/tmp/"TMPFILE))
 		return ret;	
 	remove("./"TMPFILE);
-	if(ret = execute_cmd_in_tg(ip, "chmod a+x /tmp/"TMPFILE))
+	if(ret = exec_file_in_tg(ip, "/bin/chmod a+x /tmp/"TMPFILE, 1 ))
 		return ret;	
-	return exec_file_in_tg(ip, "/tmp/"TMPFILE);	
+	return exec_file_in_tg(ip, "/tmp/"TMPFILE, 1);	
 }
 static inline int get_socid(const char *ip)
 {
@@ -609,7 +610,7 @@ static inline int get_socid(const char *ip)
 	ret = upload_file(ip,  FILE_SOCID, "/sys/devices/system/cpu/cpu0/cpuid");		
 	if((ret & 0xFFFF) == 0xFDAF)//bug, ignore CRC error
 		ret = 0;
-	log_print("retval from upload_file : %x\n", ret);
+	
 	if(ret)
 		return ret;
 	FILE *fp = fopen(FILE_SOCID, "rb");
@@ -629,21 +630,25 @@ static inline int get_socid(const char *ip)
 	return ret;
 }	
 static inline int save_net_config(const char *ip)//in upg mode
-{	
+{
+	log_info("save network config %s", ip);
 	return exec_script_in_target(ip, "mount -t yaffs2 /dev/mtdblock4 /mnt/mtdblock4\nmkdir /tmp/bak\ncp /mnt/mtdblock4/etc/network_setting.sh /mnt/mtdblock4/etc/udhcpd.conf /tmp/bak/\numount /dev/mtdblock4");
 }
 static inline int restore_net_config(const char *ip)//in upg mode
 {
+	log_info("restore network config %s\n", ip);
 	return exec_script_in_target(ip, "mount -t yaffs2 /dev/mtdblock4 /mnt/mtdblock4\ncp /tmp/bak/network_setting.sh /tmp/bak/udhcpd.conf /mnt/mtdblock4/etc/\numount /dev/mtdblock4");
 }
 
 static inline int RebootTarget(const char *ip)
-{	
+{
+	log_info("Reboot %s", ip);
 	return execute_cmd_in_tg(ip,"reboot");
 }
 
 static inline int EnableTelnet(const char *ip)
 {
+	log_info("EnableTelnet %s", ip);
 	return execute_cmd_in_tg(ip,"telnetd &");
 }
 
@@ -652,11 +657,12 @@ static int config_ip_widget(HWND hwnd, DWORD def_addr, DWORD range_min, DWORD ra
 {
 	if(hwnd == NULL)
 		return -1;
-		
+#if 0	
 	SendMessage(hwnd, IPM_SETRANGE, 0, MAKEIPRANGE(FIRST_IPADDRESS(range_min), FIRST_IPADDRESS(range_max))); 
 	SendMessage(hwnd, IPM_SETRANGE, 1, MAKEIPRANGE(SECOND_IPADDRESS(range_min), SECOND_IPADDRESS(range_max)));
 	SendMessage(hwnd, IPM_SETRANGE, 2, MAKEIPRANGE(THIRD_IPADDRESS(range_min), THIRD_IPADDRESS(range_max)));
 	SendMessage(hwnd, IPM_SETRANGE, 3, MAKEIPRANGE(FOURTH_IPADDRESS(range_min), FOURTH_IPADDRESS(range_max)));
+#endif
 	SendMessage(hwnd, IPM_SETADDRESS, 0, def_addr);
 	
 	return 0;	
@@ -751,29 +757,33 @@ static int set_usbnet(DWORD ip_old, DWORD ip_new)
 	char cmd[256];
 	DWORD_to_ipstr(ip_old, ip_old_str, 16);
 	
+	log_info("set usbnet %s -> %d.%d.0.0", ip_old_str, FIRST_IPADDRESS(ip_new), SECOND_IPADDRESS(ip_new));
 	//affect after reboot
 	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set usb 0 %d.%d",FIRST_IPADDRESS(ip_new), 
 				SECOND_IPADDRESS(ip_new));
-	if(ret = execute_cmd_in_tg(ip_old_str, "unlock /"))
+	if(ret = exec_file_in_tg(ip_old_str, "/usr/bin/unlock /", 1))
 		return ret;
-	if(ret = execute_cmd_in_tg(ip_old_str, cmd))
+	if(ret = exec_file_in_tg(ip_old_str, cmd, 1))
 		return ret;	
-	return execute_cmd_in_tg(ip_old_str, "lock /");
+	return exec_file_in_tg(ip_old_str, "/usr/bin/lock /", 1);
 }
 static int set_intranet(DWORD ip_old, DWORD ip_new)
 {
 	int ret = 0;
 	char ip_old_str[16];
+	char ip_new_str[16];
 	char cmd[256];
 	DWORD_to_ipstr(ip_old, ip_old_str, 16);
+	DWORD_to_ipstr(ip_new, ip_new_str, 16);
+	
+	log_info("set intranet_addr %s -> %s", ip_old_str, ip_new_str);
 	//affect after reboot
-	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set ether 0 %d.%d.%d.%d",FIRST_IPADDRESS(ip_new),
-			SECOND_IPADDRESS(ip_new), THIRD_IPADDRESS(ip_new), FOURTH_IPADDRESS(ip_new));
-	if(ret = execute_cmd_in_tg(ip_old_str, "unlock /"))
+	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set ether 0 %s", ip_new_str);
+	if(ret = exec_file_in_tg(ip_old_str, "/usr/bin/unlock /", 1))
 		return ret;
-	if(ret = execute_cmd_in_tg(ip_old_str, cmd))
+	if(ret = exec_file_in_tg(ip_old_str, cmd, 1))
 		return ret;	
-	return execute_cmd_in_tg(ip_old_str, "lock /");
+	return exec_file_in_tg(ip_old_str, "/usr/bin/lock /", 1);
 }
 
 static inline void dump_project(void)
@@ -961,13 +971,13 @@ static int download_dsp_image(LPARAM target_ip, char *local_image)
 	snprintf(target_ip_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(target_ip), 
 				SECOND_IPADDRESS(target_ip), THIRD_IPADDRESS(target_ip),
 				FOURTH_IPADDRESS(target_ip));
-	log_print("download Dsp Image : ip = %s, DspImage = %s\n",target_ip_str, local_image);
+	log_info("download Dsp Image : ip = %s, DspImage = %s\n",target_ip_str, local_image);
 	//unlock rootfs
-	if(ret = execute_cmd_in_tg(target_ip_str,"unlock /"))
+	if(ret = exec_file_in_tg(target_ip_str,"/usr/bin/unlock /", 1))
 		return ret;	
 	if(ret = download_file(target_ip_str, local_image, TARGET_DSP_IMAGE))
 		return ret;
-	return execute_cmd_in_tg(target_ip_str, "lock /");
+	return exec_file_in_tg(target_ip_str, "/usr/bin/lock /", 1);
 }
 static int OnBtnDspDownload(void)
 {
@@ -3004,7 +3014,7 @@ static int linux_download(void)
 								
 			if(retval = exec_script_in_target(ipstr, "echo upg > /sys/sysdevs/bootmode"))
 				goto linux_download_error;			
-			if(retval = execute_cmd_in_tg(ipstr, "reboot"))
+			if(retval = RebootTarget(ipstr))
 				goto linux_download_error;
 			
 			//set ipstr_master
@@ -3017,7 +3027,7 @@ static int linux_download(void)
 		else
 		{			
 			int host_count = 0;
-			mask = hosts[SEL_ALL].eth_addr;			
+			mask = hosts[SEL_ALL].usb_addr;			
 			if(selection == SEL_ALL || selection == SEL_M1S1) //slave first
 			{				
 				ini_file_info.dword_ip[host_count] = hosts[SEL_M1S1].eth_addr;
@@ -3041,7 +3051,7 @@ static int linux_download(void)
 			if(retval = exec_script_in_target(ipstr_master, "echo upg > /sys/sysdevs/bootmode"))
 				goto linux_download_error;
 			
-			if(retval = execute_cmd_in_tg(ipstr_master, "reboot"))
+			if(retval = RebootTarget(ipstr_master))
 				goto linux_download_error;
 			
 			//reset ipstr_master
@@ -3098,7 +3108,7 @@ static int linux_download(void)
 		}
 		if(burn_mode == SELECT_LINUX_PROGRAMMING)
 		{
-			/* save network config file*/		
+			/* save network config file*/
 			save_net_config(initrd_ip);					
 		}
 		
@@ -3165,10 +3175,10 @@ static int linux_download(void)
 		
 	}
 	//reboot master to reboot every soc
-	Sleep(1000);//wait a moment to reboot
-	if(retval = execute_cmd_in_tg(ipstr_master, "reboot")){
-		log_print("reboot failed, ipstr_master = %s, error code is %x.\n", ipstr_master, retval);
-		ERROR_MESSAGE("reboot target failed, please reboot it manual.");
+	//Sleep(1000);//wait a moment to reboot
+	if(retval = RebootTarget(ipstr_master)){
+		log_print("reboot failed, ipstr_master = %s, error code is %x.\n", ipstr_master, retval);		
+		ERROR_MESSAGE("Reboot target failed, please reboot it manual(0x%04X).", retval);
 	}		
 	//log_print("return from reboot, ipstr_master = %s\n", ipstr_master);
 	return 0;
@@ -3397,12 +3407,12 @@ static int DspDump(void)
 	DWORD ip;
 	SendMessage(hwndUtilsIpAddrDeviceSubNet, IPM_GETADDRESS, 0 , (LPARAM)&ip);
 	DWORD_to_ipstr(ip, ipstr, 16);
-	const char *script = "[ -d \""DSPDUMP_DIR"\" ] && tar -zcf /tmp/"DSPDUMP_TBALL" -C "DSPDUMP_DIR" `ls "DSPDUMP_DIR"`\n";
+	const char *script = "[ -d \""DSPDUMP_DIR"\" ] && tar -zhcf /tmp/"DSPDUMP_TBALL" -C "DSPDUMP_DIR" `ls "DSPDUMP_DIR"`\n";
 	//pack directory
 	if(retval = exec_script_in_target(ipstr, script))
 		return retval;
 	//upload package
-	Sleep(1500);//wait for pack done
+	//Sleep(1500);//wait for pack done
 	//prepre 'PC_DUMP_DIR' directory
 	CreateDirectory(PC_DUMP_DIR, NULL);
 	if(retval = upload_file(ipstr, PC_DUMP_DIR"/"DSPDUMP_TBALL, "/tmp/"DSPDUMP_TBALL))

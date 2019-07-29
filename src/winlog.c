@@ -85,6 +85,7 @@ int log(int level, const char *fmt, ...)
 	if(fmt && fmt[strlen(fmt) - 1] != '\n')
 		retlen += fprintf(log_fp,"\n");
 	fflush(log_fp);
+	return retlen;
 }
 
 int closelog()

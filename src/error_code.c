@@ -1,44 +1,8 @@
-/*
- *  Name:  devToolsUI_private.h  
- *
- *  Purpose: Debug utility for Unication console application
- *
- *  For AD6900 Project ONLY.
- *  UNICATION CO. LTD. PROPRIETARY INFORMATION
- *
- *  SECURITY LEVEL - HIGHLY CONFIDENTIAL
- *
- *  DO NOT COPY
- *
- *  This document and the information contained in it is confidential and
- *  proprietary to Unication Co., Ltd. The reproduction or disclosure in
- *  whole or in part, to anyone outside of Unication Co., Ltd. without the
- *  written approval of the President of Unication Co., Ltd., under a
- *  Non-Disclosure Agreement, or to any employee of Unication Co. Ltd. who
- *  has not previously obtained written authorization for access from the
- *  individual responsible for the document, will have a significant
- *  detrimental effect on Unication Co., Ltd. and is expressly prohibited.
- *
- *  Copyright (c) $Date: 2016/07/28 06:43:26 $ Unication Co., Ltd.
- *
- *  All rights reserved
- */
-#ifndef _DEVTOOlSUI_PRIVATE_H_
-#define _DEVTOOlSUI_PRIVATE_H_
+#include "error_code.h"
 
-
-#define IS_LISTENING_ON_NOTHING   (0)
-#define IS_LISTENING_ON_MFG       (1)
-#define IS_LISTENING_ON_SPL       (2)
-
-struct _error_code_info
-{
-    unsigned short ec;
-    const char* string;
-	const char* short_string;
-};
-
-/*const*/ struct _error_code_info error_code_info[] = 
+unsigned short error_code = OK;	
+	
+struct _error_code_info error_code_info[] = 
 {
 	{0xFDFF, "Please check image again.","Please check image again."},// For U3 Only
     {0xFDFE, "Please init first","Please init first"}, // For U3 Only
@@ -137,4 +101,66 @@ struct _error_code_info
      
     {0xFFF8, "The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance.","Operation failed."}                // FFF8         
 };
-#endif
+			
+struct _error_code_info ui_error_code_info[] = {
+	{EC_INI_FILE_NOT_EXSIT,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_FILE_SYNTAX_ERROR,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IP_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IP_INVALID,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IP_TOO_MANY,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IMAGE_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
+	{EC_INI_IMAGE_NOT_EXSIT,"Can't find Image,please check if it's exsit.","Can't find Image."},
+	{EC_INI_IMAGE_INVALID,"Image broken,please use the right image.","Image broken."},
+	{EC_INI_IMAGE_INCOMPATIBLE,"Image incompatible,please use the right image for target.","Image incompatible."},
+	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"Ini file error,rescue_image not specified.","Ini file error."},
+	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"Ini file error,rescue_image not exsit.","Ini file error."},
+	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid.","Ini file error."},
+	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible.","Ini file error."},
+	{EC_NO_PARTITION_SELECTED,"Error! No partition selected.","Error! No partition selected."},
+	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
+	{EC_IPADDR_CONFLICT,"IP address conflict with default usb/intranet ip address.", "IP address invalid."},
+	{EC_NOENT, "No such file or directory.", "No such file or directory."},
+	{EC_NOT_IMPL, "Not implement yet.", "Not implement yet."},
+};
+
+const char *get_error_info(unsigned short ec)
+{
+    int i;	
+	/*first find it in ui_error_code_info table*/
+	for(i = 0; i < (sizeof(ui_error_code_info)/sizeof(ui_error_code_info[0]));i++)
+	{
+		if(ec == ui_error_code_info[i].ec)
+			return ui_error_code_info[i].string;
+	}
+	/*ec is not in ui_error_code_info table,then find it in error_code_info table*/
+    for (i=0; i<(sizeof(error_code_info)/sizeof(error_code_info[0])); i++)
+    {
+		if (error_code_info[i].ec == ec)
+        {
+            return (char *)error_code_info[i].string;
+        }
+    }
+	/*not found*/
+    return ec_not_found;
+}
+const char *get_short_info(unsigned short ec)
+{
+	int i;	
+	/*first find it in ui_error_code_info table*/
+	for(i = 0; i < (sizeof(ui_error_code_info)/sizeof(ui_error_code_info[0]));i++)
+	{
+		if(ec == ui_error_code_info[i].ec)
+			return ui_error_code_info[i].short_string;
+	}
+	/*ec is not in ui_error_code_info table,then find it in error_code_info table*/
+    for (i=0; i<(sizeof(error_code_info)/sizeof(error_code_info[0])); i++)
+    {
+		if (error_code_info[i].ec == ec)
+        {
+            return (char *)error_code_info[i].short_string;
+        }
+    }
+	/*not found*/
+    return ec_not_found;
+}
+

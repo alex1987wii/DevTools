@@ -38,76 +38,78 @@
  *
  */
 
-
-/* WINVER defines the minimum Windows system the program can run on.
-   Unication Dev Tools need run on the Windows XP(0x0501) and the following system  */
-#define WINVER 0x0501
-
-/* _WIN32_IE defines the minimum Internet Explorer version required by the program.
-   Unication Dev Tools need Internet Explorer 5.01(0x0501) and the followings  */
-#define _WIN32_IE 0x0501
-#include <stdint.h>
-#include <windows.h>
-#include <windowsx.h>
-#include <Commctrl.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <dbt.h>
-#include <devguid.h>
-#include <Winsock2.h>
-#include <time.h>
-#include "UpgradeLib.h"
-#include "uni_image_header.h"
-#include "error_code.h"
-#include "devToolsRes.h"
-#include "iniparser.h"
-#include "devToolsUI_private.h"
-#include "winlog.h"
-/*  ===========================================================================
- *  Macro definitions
- *  ===========================================================================
- */
-
-#define DEBUG_NONE			0
-#define DEBUG_CONSOLE		1
-#define DEBUG_LOG			2
-
-#define DEBUG_MODE			DEBUG_LOG	//fixme if you want change the debug mode
-#define LOGFILE				"devToolUI.log"
-
-
-
-#if (DEBUG_MODE == DEBUG_CONSOLE || DEBUG_LOG == DEBUG_MODE)
-#define UI_DEBUG(fmt,args...)			do{\
-TCHAR buff[1024];\
-snprintf(buff,1024,TEXT("%s:%s:%d:")fmt,__FILE__,__func__,__LINE__,##args);\
-MessageBox(hwndMain,buff,TEXT("UI_DEBUG"),MB_ICONWARNING);}while(0)
-
-#if (DEBUG_CONSOLE == DEBUG_MODE)
-#define console_print(fmt,args...)	printf(fmt,##args)
-#define log_print(fmt,args...)		printf(fmt,##args)
-
-#elif (DEBUG_MODE == DEBUG_LOG)
-#define log_print(fmt, ...)			log_info(fmt, ##__VA_ARGS__)
-#define console_print(fmt,args...)
-#endif
-
-#define debug_positions(args1,args2)
-
+/********************************************************************************/
+#if (defined(CONFIG_PROJECT_U3))
+#define PROJECT			"U3"
+#define U3_LIB
+#elif defined(CONFIG_PROJECT_U3_2ND)
+#define PROJECT			"U3_2ND"
+#define U3_LIB
+#elif defined CONFIG_PROJECT_U5_BBA
+#define PROJECT			"bba"
+#elif (defined(CONFIG_PROJECT_G4_BBA) || defined(CONFIG_PROJECT_G4_BBA_V2))
+#define PROJECT			"G4_BBA"
+#elif defined CONFIG_PROJECT_BR01_2ND
+#define PROJECT			"BR01_2ND"
+#elif defined CONFIG_PROJECT_M2
+#define PROJECT			"M2"
+#elif defined CONFIG_PROJECT_AD6900_BBA
+#define PROJECT			"AD6900_BBA"
+#elif defined CONFIG_PROJECT_BR01
+#define PROJECT			"BR01"
+#elif defined(CONFIG_PROJECT_U4)
+#define PROJECT			"U4"
+#elif defined(CONFIG_PROJECT_U4_BBA)
+#define PROJECT			"U4_BBA"
+#elif defined CONFIG_PROJECT_REPEATER_BBA
+#define PROJECT			"REPEATER_BBA"
 #else
-	
-#define UI_DEBUG(fmt,args...)
-#define debug_positions(args1,args2)
+	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
 #endif
-#define MAX_STRING	1024
-#define ERROR_MESSAGE(message,args...)	do{TCHAR MessageBoxBuff[MAX_STRING];\
-snprintf(MessageBoxBuff,MAX_STRING,TEXT(message),##args);\
-MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
-}while(0) 
+
+#if defined DEVELOPMENT
+#if defined LIMITED
+#define DEV_TOOLS_NUMBER        1  
+#else
+#define DEV_TOOLS_NUMBER        3           /* Unication dev tools have three utilities */
+#endif
+#elif defined MAINTAINMENT
+#define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
+#elif defined PRODUCTION
+#define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
+#endif
+
+/*********************Tab Select ID****************************/
+#define SELECT_LINUX_PROGRAMMING		0
+#define SELECT_SPL_PROGRAMMING			1 //unused
+#define SELECT_MFG_PROGRAMMING			2
+#define SELECT_UTILS					3
+
+/**********************************************************************/
+#if defined(DEVELOPMENT)
+#ifdef LIMITED
+#define APP_TITLE		   "Unication Limited Tools"
+#else
+#define APP_TITLE          "Unication Dev Tools"
+#endif //LIMITED
+static const char *ini_file = "for_user_file.ini";/*select partition by check checkbox*/
+static int burn_mode = SELECT_LINUX_PROGRAMMING;
+#elif defined(MAINTAINMENT)
+#define APP_TITLE          "Unication Maintenance Tools"
+static const char *ini_file = "for_user_file.ini";
+static const int burn_mode = SELECT_LINUX_PROGRAMMING;
+#elif defined(PRODUCTION)
+#define APP_TITLE          "Unication NandFlash Programmer"
+static const char *ini_file = "for_mfg_file.ini";
+static const int burn_mode = SELECT_MFG_PROGRAMMING;
+#endif
+
+#include "uni_ui_config.h"
+#include "devToolsUI.h"
+#include "devToolsRes.h"
+
 	
-/*user message definition which is not conflict with "devToolsUI_private.h"*/
+/*user message definition*/
 #define WM_CREATE_PROGRESS_BAR		(WM_USER+110)
 #define WM_DESTROY_PROGRESS_BAR		(WM_USER+111)
 #define WM_CREATE_PARTITION_LIST	(WM_USER+112)
@@ -129,154 +131,15 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #define PROGRESS_STATUS_FINISHED      (4)
 #define PROGRESS_STATUS_TRANSFER	  (5)
 #define MAX_STATUS					(6)
-	
-#if defined DEVELOPMENT
-#if defined LIMITED
-#define DEV_TOOLS_NUMBER        1  
-#else
-#define DEV_TOOLS_NUMBER        3           /* Unication dev tools have three utilities */
-#endif
-#elif defined MAINTAINMENT
-#define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
-#elif defined PRODUCTION
-#define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
-#endif
 
 #define MAGIC_VALUE             (0xdeaddead)
 #define IS_IDEL                 (0)
 #define IS_DOWNLOADING          (1)
 #define IS_UPLOADING            (2)
 
-/* layout */
-#define DEV_TOOLS_WIDTH         700         /* Unication dev tools main window width */
-#define DEV_TOOLS_HEIGHT        580         /* Unication dev tools main window height */
 
-#define X_MARGIN                10
-#define Y_MARGIN                10
-#define HEIGHT_CONTROL          30
-#define WIDTH_EDIT              420
-
-#define WIDTH_CHECKBOX          95
-#define WIDTH_BUTTON            90
-#define WIDTH_TEXT              80
-#define WIDTH_COMBO             200
-
-
-#define TAB_HEAD_HEIGHT         30
-
-#define TAB_CLIENT_WIDTH        (DEV_TOOLS_WIDTH - X_MARGIN*4)
-#define TAB_CLIENT_HEIGHT       (DEV_TOOLS_HEIGHT - Y_MARGIN*4 - TAB_HEAD_HEIGHT - Y_MARGIN)
-
-#define POP_WIN_HEIGHT          110
-
-#define TAB_CLIENT_START_X      X_MARGIN
-#define TAB_CLIENT_START_Y      (TAB_HEAD_HEIGHT + Y_MARGIN*2)
- 
-#define WIDTH_EDIT_NAND         360
-#define WIDTH_EDIT1             135
-#define WIDTH_IPADDR	200
-
-#define WIDTH_BUTTON_NANDFLASH_PROGRAM 110
-
-
-#define TAB_NANDFLASH_START_X   5*X_MARGIN
-#define TAB_NANDFLASH_WIDTH     (DEV_TOOLS_WIDTH - X_MARGIN*4) - 60
-#define TAB_NANDFLASH_HEIGHT    (DEV_TOOLS_HEIGHT - Y_MARGIN*4 - TAB_HEAD_HEIGHT)/2 - 50
-
-#define FILE_DL_START_X         10
-#define FILE_DL_START_Y         0
-#define FILE_DL_WIDTH           TAB_CLIENT_WIDTH-X_MARGIN*2
-#define FILE_DL_HEIGHT          (TAB_CLIENT_HEIGHT - 2*Y_MARGIN)/2 - 30
-#define WIN_STATIC_OFFSET       (3)
-#define WIN_COMBO_OFFSET        (10)
-
-
-/********************************************************************************/
-#if (defined(CONFIG_PROJECT_U3))
-#define PROJECT			"U3"
-#define U3_LIB
-#elif defined(CONFIG_PROJECT_U3_2ND)
-#define PROJECT			"U3_2ND"
-#define U3_LIB
-#elif defined CONFIG_PROJECT_U5
-#define PROJECT			"U5"
-#elif (defined(CONFIG_PROJECT_G4_BBA) || defined(CONFIG_PROJECT_G4_BBA_V2))
-#define PROJECT			"G4_BBA"
-#elif defined CONFIG_PROJECT_BR01_2ND
-#define PROJECT			"BR01_2ND"
-#elif defined CONFIG_PROJECT_M2
-#define PROJECT			"M2"
-#elif defined CONFIG_PROJECT_AD6900_BBA
-#define PROJECT			"AD6900_BBA"
-#elif defined CONFIG_PROJECT_BR01
-#define PROJECT			"BR01"
-#elif defined(CONFIG_PROJECT_U4)
-#define PROJECT			"U4"
-#elif defined(CONFIG_PROJECT_U4_BBA)
-#define PROJECT			"U4_BBA"
-#elif defined CONFIG_PROJECT_REPEATER_BBA
-#define PROJECT			"REPEATER_BBA"
-#else
-	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
-#endif
-
-
-/*UI error code definition */
-#define UI_ERROR_NUM_MAX	(100)
-#define UI_ERROR_START		(-1000 - UI_ERROR_NUM_MAX)
-#define OK		0
-unsigned short error_code = OK;		
-enum _UI_ERROR_CODE{
-	EC_INI_FILE_NOT_EXSIT = UI_ERROR_START,
-	EC_INI_FILE_SYNTAX_ERROR,
-	EC_INI_IP_NOT_SPECIFY,
-	EC_INI_IP_INVALID,
-	EC_INI_IP_TOO_MANY,
-	EC_INI_IMAGE_NOT_SPECIFY,
-	EC_INI_IMAGE_NOT_EXSIT,
-	EC_INI_IMAGE_INVALID,
-	EC_INI_IMAGE_INCOMPATIBLE,
-	EC_INI_RESCUE_IMAGE_NOT_SPECIFY,
-	EC_INI_RESCUE_IMAGE_NOT_EXSIT,
-	EC_INI_RESCUE_IMAGE_INVALID,
-	EC_INI_RESCUE_IMAGE_INCOMPATIBLE,
-	EC_NO_PARTITION_SELECTED,
-	EC_WAIT_REBOOT_TIMEOUT,
-	EC_IPADDR_CONFLICT,
-	EC_UI_MAX,
-};
-//shell error code is 255 max, assign it a offset of UI_ERROR_START
-enum _UI_SHELL_ERROR_CODE{
-	EC_NOENT = EC_UI_MAX - UI_ERROR_START,
-};
-			
-struct _error_code_info ui_error_code_info[] = {
-	{EC_INI_FILE_NOT_EXSIT,"Tool package broken,please re-install this tool.","Tool package broken."},
-	{EC_INI_FILE_SYNTAX_ERROR,"Tool package broken,please re-install this tool.","Tool package broken."},
-	{EC_INI_IP_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
-	{EC_INI_IP_INVALID,"Tool package broken,please re-install this tool.","Tool package broken."},
-	{EC_INI_IP_TOO_MANY,"Tool package broken,please re-install this tool.","Tool package broken."},
-	{EC_INI_IMAGE_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
-	{EC_INI_IMAGE_NOT_EXSIT,"Can't find Image,please check if it's exsit.","Can't find Image."},
-	{EC_INI_IMAGE_INVALID,"Image broken,please use the right image.","Image broken."},
-	{EC_INI_IMAGE_INCOMPATIBLE,"Image incompatible,please use the right image for target.","Image incompatible."},
-	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"Ini file error,rescue_image not specified.","Ini file error."},
-	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"Ini file error,rescue_image not exsit.","Ini file error."},
-	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid.","Ini file error."},
-	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible.","Ini file error."},
-	{EC_NO_PARTITION_SELECTED,"Error! No partition selected.","Error! No partition selected."},
-	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
-	{EC_IPADDR_CONFLICT,"IP address conflict with default usb/intranet ip address.", "IP address invalid."},
-	{EC_NOENT, "No such file or directory.", "No such file or directory."},
-};
 /*info*/
 #define LINUX_INIT			"Preparing"
-
-#ifdef MAINTAINMENT
-const char *ec_not_found = "Error occurs,please try it again.If it happened again please contact your support personnel for assistance.";
-#else
-const char *ec_not_found = "Error code not found.";
-#endif
 
 static char partition_name[UNI_MAX_PARTITION][UNI_MAX_PARTITION_NAME_LEN];
 static int total_partition = 0;
@@ -286,51 +149,10 @@ static HWND hwndPartitionCheckBox[UNI_MAX_PARTITION] = {NULL,};
 int partition_x_pos = 0;
 int partition_y_pos = 0;
 
-#define IP_MAX			4
-const char *ip_addr[IP_MAX] = {
-	"10.10.0.12",
-	"10.10.12.11",
-	"10.10.12.21",
-	"10.10.12.22"
-};
-/*Notice: hosts and macros start with SEL_ must at that order*/
-#define MAX_HOST	2
-#define SEL_ALL 0
-#define SEL_M1S2 1
-#define SEL_M1S1 2
-#define SEL_INTRANET 3
-struct Host{
-	char *name; //unused
-	DWORD usb_addr;
-	DWORD eth_addr;
-	DWORD intranet_addr;
-};
-struct Host hosts[MAX_HOST + 1] = { 
-		[0] = {.name = "ALL", .usb_addr = (DWORD)MAKEIPADDRESS(255, 255, 0, 0), 
-		.eth_addr = (DWORD)MAKEIPADDRESS(255, 255, 255, 0), 
-		.intranet_addr = (DWORD)MAKEIPADDRESS(255, 255, 255, 0)},//only store mask
-		
-		[1] = {.name = "M1S2", .usb_addr = (DWORD)MAKEIPADDRESS(10, 10, 0, 12), 
-		.eth_addr = (DWORD)MAKEIPADDRESS(10, 10, 12, 12), 
-		.intranet_addr = (DWORD)MAKEIPADDRESS(10, 85, 32, 12)},
-		
-		[2] = {.name = "M1S1", .usb_addr = 0, 
-		.eth_addr = (DWORD)MAKEIPADDRESS(10, 10, 12, 11), 
-		.intranet_addr = (DWORD)MAKEIPADDRESS(10, 85, 32, 11)}
-};
-DWORD def_subnet = (DWORD)MAKEIPADDRESS(10, 10, 0, 0);
-DWORD subnet_mask = (DWORD)MAKEIPADDRESS(255, 255,0, 0);
-/*********************Tab Select ID****************************/
-#define SELECT_LINUX_PROGRAMMING		0
-#define SELECT_SPL_PROGRAMMING			4 //unused
-#define SELECT_MFG_PROGRAMMING			1
-#define SELECT_UTILS					2
-
-
 
 /* Unication UniDevTools lines buffer definitions */
 #if defined DEVELOPMENT
-PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", " For MFG ", "Utils"};
+PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", "For SPL"," For MFG "};
 #elif defined MAINTAINMENT
 PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Upgrade"};
 #elif defined PRODUCTION
@@ -339,35 +161,12 @@ PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
 
 #define TARGET_DSP_IMAGE		"/root/dsp_image.bin"
 
-/**********************************************************************/
-#if defined(DEVELOPMENT)
-#ifdef LIMITED
-#define APP_TITLE		   "Unication Limited Tools"
-#else
-#define APP_TITLE          "Unication Dev Tools"
-#endif //LIMITED
-static const char *ini_file = "for_user_file.ini";/*select partition by check checkbox*/
-static int burn_mode = SELECT_LINUX_PROGRAMMING;
-#elif defined(MAINTAINMENT)
-#define APP_TITLE          "Unication Maintenance Tools"
-static const char *ini_file = "for_user_file.ini";
-static const int burn_mode = SELECT_LINUX_PROGRAMMING;
-#elif defined(PRODUCTION)
-#define APP_TITLE          "Unication NandFlash Programmer"
-static const char *ini_file = "for_mfg_file.ini";
-static const int burn_mode = SELECT_MFG_PROGRAMMING;
-#endif
-
-#define UNI_APP_MUTEX      "Unication Dev Tools"
-typedef int (*background_func)(void );
-
 static background_func g_background_func = NULL;/*INVOKE by BackGroundThread*/
 //static void *g_background_arg = NULL;
 #define ERROR_INFO_MAX			256
 static TCHAR error_info[ERROR_INFO_MAX];//storage error information
 static TCHAR error_msg[ERROR_INFO_MAX];//storage error message
 
-typedef void (*complete_func)(int retval,void *private_data);
 static complete_func g_complete_func = NULL;/*INVOKE by WM_INVOKE_CALLBACK*/
 static void *g_complete_private_data = NULL;
 
@@ -377,10 +176,7 @@ static BOOL g_processing = FALSE;
 static int g_retval = 0;
 static int partition_selected = 0;
 static BOOL g_on_batch = FALSE;
-#define IS_LISTENING_ON_NOTHING   (0)
-#define IS_LISTENING_ON_MFG       (1)
-#define IS_LISTENING_ON_SPL       (2)
-#define IS_LISTENING_ON_LINUX	  (3)
+
 
 static int listening_on = IS_LISTENING_ON_NOTHING;
 
@@ -423,17 +219,6 @@ const char target_type[3][64] = {
 static char project_target[64];
 
 static RECT rcClient; // rcClient.right, rcClient.bottom
-
-typedef struct _ini_file_info
-{
-	int ip_should_flash;
-	DWORD dword_ip[4]; //used by br01 for store ip
-    char ip[4][16]; // xxx.xxx.xxx.xxx
-    char name_of_image[MAX_PATH];
-	char name_of_rescue_image[MAX_PATH];
-} ini_file_info_t;
-
-static ini_file_info_t ini_file_info;
 
 static int image_length = 0;
 
@@ -493,27 +278,15 @@ static HWND    hwndCheckBoxBatch;
 /**********************Utils Handler Declaration*************************/
 static HWND    hwndUtilsPage, hwndGroupChangeIP, hwndGroupDspImage, hwndUtilsInfo;
 static HWND    hwndStaticDeviceIP, hwndUtilsStaticHost, hwndStaticChangto, hwndStaticDspImage, hwndUtilsStaticChangeToMask;
-static HWND    hwndUtilsIpAddrDeviceIP, hwndUtilsComboHost, hwndUtilsIpAddrChangeto, hwndEditDspImage, hwndUtilsComboHost;
+HWND    hwndUtilsIpAddrDeviceIP, hwndUtilsComboHost, hwndUtilsIpAddrChangeto, hwndEditDspImage, hwndUtilsComboHost;
 static HWND	   hwndBtnChange, hwndBtnDspImageBrowser, hwndBtnDspDownload;
 static HWND    hwndBtnReboot, hwndBtnEnableTelnet;
 static HWND	   hwndBtnGroupExtra, hwndStaticExtraTool, hwndComboExtraToolList, hwndBtnExtraExcute;
 /* Popup window handle definitions */
 static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
 
-typedef int (*tool_func_t)(void);	
-struct function_t{
-	TCHAR *name;
-	TCHAR *desc;
-	tool_func_t func;
-};
 
-static int DspDump(void);
-struct function_t tool_set[] = {
-	{ .name = "DspDump", 
-	.desc = NULL,//"Dump DSP log from /userdata/dspdump and save it in ./dump as a tarball, then delete all files in /userdata/dspdump.", 
-	.func = DspDump},
-};
-
+#include "debug_log.h"
 /*  ===========================================================================
  *  Function declaration
  *  ===========================================================================
@@ -527,137 +300,16 @@ static void generic_complete_cb(int retval, void *private_data);
  */
 #define CHECKBOX_IS_CLICK(x)  (Button_GetCheck(x) == BST_CHECKED)
 
-#if (DEBUG_MODE == DEBUG_CONSOLE)
-
-/*
- *  Name:     InitDebugConsole
- *
- *  Purpose:  Init debug console
- *
- *  Params:    none
- *
- *  Return:    If the function succeeds, the return value is TRUE
- *               If the function fails, the return value is FALSE
- *
- */
-BOOL InitDebugConsole( void )
-{
-	/* Allocates a new console for the calling process */
-	if( !AllocConsole() )
-    {      
-        return FALSE;
-    }    
-    /* redirect stdout and stdin to console out and console in */
-    freopen(TEXT("CONOUT$"),TEXT("w"), stdout);
-    freopen(TEXT("CONIN$"), TEXT("r"), stdin);
-    
-    return TRUE;
-
-}
-/*
- *  Name:     ExitDebugConsole
- *
- *  Purpose:  Exit debug console
- *
- *  Params:    none
- *
- *  Return:    none
- *
- */
-void ExitDebugConsole( void )
-{
-	FreeConsole();
-	return;
-}
-#elif (DEBUG_MODE == DEBUG_LOG)
-BOOL InitDebugConsole( void )
-{   
-	return openlog(LOGFILE, LOG_INFO, LOG_OVERLAP) == 0;
-}
-void ExitDebugConsole( void )
-{	
-	closelog();
-}
-
-#else
-
-BOOL InitDebugConsole( void )
-{   
-    return TRUE;
-
-}
-void ExitDebugConsole( void )
-{
-	return;
-}
-
-#endif
-
-#define dump_time()
-
-static inline int exec_script_in_target(const char *ip, const char *cmdlines)
-{
-	#define TMPFILE		"tmpfile.sh"
-	int ret = 0;
-	log_info("exec script in target %s -> %s", ip, cmdlines);
-	FILE *fp = fopen("./"TMPFILE, "wb+");
-	fwrite("#!/bin/sh\n", 1, strlen("#!/bin/sh\n"), fp);
-	fwrite(cmdlines,1, strlen(cmdlines), fp);
-	fclose(fp);	
-	if(ret = download_file(ip,"./"TMPFILE, "/tmp/"TMPFILE))
-		return ret;	
-	remove("./"TMPFILE);
-	if(ret = exec_file_in_tg(ip, "/bin/chmod a+x /tmp/"TMPFILE, 1 ))
-		return ret;	
-	return exec_file_in_tg(ip, "/tmp/"TMPFILE, 1);	
-}
-static inline int get_socid(const char *ip)
-{
-	#define FILE_SOCID	"tmpfile.socid"
-	int ret;	
-	ret = upload_file(ip,  FILE_SOCID, "/sys/devices/system/cpu/cpu0/cpuid");		
-	if((ret & 0xFFFF) == 0xFDAF)//bug, ignore CRC error
-		ret = 0;
-	
-	if(ret)
-		return ret;
-	FILE *fp = fopen(FILE_SOCID, "rb");
-	char socid;
-	if( 1 != fread(&socid, 1, 1, fp))
-		return -1;
-	switch(socid){
-		case '0':ret = SEL_M1S1;
-		break;
-		case '1':ret = SEL_M1S2;
-		break;
-		default:
-		ret = -1;
-	}
-	fclose(fp);	
-	remove(FILE_SOCID);
-	return ret;
-}	
-static inline int save_net_config(const char *ip)//in upg mode
-{
-	log_info("save network config %s", ip);
-	return exec_script_in_target(ip, "mount -t yaffs2 /dev/mtdblock4 /mnt/mtdblock4\nmkdir /tmp/bak\ncp /mnt/mtdblock4/etc/network_setting.sh /mnt/mtdblock4/etc/udhcpd.conf /tmp/bak/\numount /dev/mtdblock4");
-}
-static inline int restore_net_config(const char *ip)//in upg mode
-{
-	log_info("restore network config %s\n", ip);
-	return exec_script_in_target(ip, "mount -t yaffs2 /dev/mtdblock4 /mnt/mtdblock4\ncp /tmp/bak/network_setting.sh /tmp/bak/udhcpd.conf /mnt/mtdblock4/etc/\numount /dev/mtdblock4");
-}
-
 static inline int RebootTarget(const char *ip)
 {
-	log_info("Reboot %s", ip);
-	return execute_cmd_in_tg(ip,"reboot");
+	log_info("RebootTarget %s", ip);
+	return EC_NOT_IMPL;
 }
 
 static inline int EnableTelnet(const char *ip)
 {
 	log_info("EnableTelnet %s", ip);
-	return execute_cmd_in_tg(ip,"telnetd &");
+	return EC_NOT_IMPL;
 }
 
 /*extra utils section*/
@@ -668,184 +320,6 @@ static inline int count_bits(DWORD word)
 	for(; i < sizeof(DWORD)*8; ++i)
 		bits += (word >>i)&0x1;
 	return bits;
-}
-static int config_ip_widget(HWND hwndIPAddr, DWORD def_addr, HWND hwndIPMask, DWORD mask)
-{
-	char mask_str[8];
-	if(hwndIPAddr == NULL)
-		return -1;
-	mask_str[0] = 0;
-	int bits = count_bits(mask);
-	if(bits)
-		snprintf(mask_str, 8, "/%d", bits);
-
-	SendMessage(hwndIPAddr, IPM_SETADDRESS, 0, def_addr);
-	if(hwndIPMask)
-		SetWindowText(hwndIPMask, mask_str);
-	return 0;	
-}
-enum ip_type{
-	USB_IP,
-	INTRANET_IP,
-};
-static int check_ip_addr(DWORD ip, int type)
-{	
-	if((type == INTRANET_IP) && (hosts[SEL_M1S2].eth_addr & hosts[SEL_ALL].usb_addr) == (ip & hosts[SEL_ALL].usb_addr))
-		return EC_IPADDR_CONFLICT;
-	else if((type == USB_IP) && (hosts[SEL_M1S2].intranet_addr & hosts[SEL_ALL].usb_addr) == (ip & hosts[SEL_ALL].usb_addr))
-		return EC_IPADDR_CONFLICT;
-	else if(ip == hosts[SEL_M1S1].intranet_addr || ip == hosts[SEL_M1S2].intranet_addr)
-		return EC_IPADDR_CONFLICT;
-	return 0;	
-}
-/*create and init ip widget, it have some default paramenter hard code in this function*/
-static HWND create_and_init_ip_widget(int x, int y, HWND parent, HINSTANCE hinst,DWORD def_addr)/*extra parameter*/
-{			
-	HWND hwnd = NULL;
-	hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WC_IPADDRESS, NULL,
-			WS_CHILD | WS_VISIBLE ,
-			x, y,
-			WIDTH_IPADDR, HEIGHT_CONTROL,
-			parent, NULL,
-			hinst, NULL);
-	SendMessage(hwnd, IPM_SETADDRESS, 0, def_addr);	
-	return hwnd;
-}
-
-static HWND create_and_init_host_combo(int x, int y, HWND parent, HINSTANCE hinst, int page)
-{
-	HWND hwnd = NULL;
-	hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("ComboBox"), NULL,
-            WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE|
-            CBS_AUTOHSCROLL,
-            x, y + WIN_STATIC_OFFSET,
-            WIDTH_TEXT, HEIGHT_CONTROL*(MAX_HOST+1),
-            parent, NULL,
-            hinst, NULL);		
-	
-	
-	if(page == SELECT_LINUX_PROGRAMMING)//utils page have no USB_M1S2 and USB_M1S1
-	{
-		ComboBox_AddString(hwnd, "USB_ALL");
-		ComboBox_AddString(hwnd, "USB_M1S2");
-		ComboBox_AddString(hwnd, "USB_M1S1");
-	}
-	else
-		ComboBox_AddString(hwnd, "USB");
-	ComboBox_AddString(hwnd, "Intranet");
-	ComboBox_SetCurSel(hwnd, 0);
-	return hwnd;
-}
-	
-static HWND create_and_init_tool_list(int x, int y, HWND parent, HINSTANCE hinst)
-{
-	HWND hwnd = NULL;
-	hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT ("ComboBox"), NULL,
-            WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_AUTOHSCROLL,
-            x, y,
-            WIDTH_TEXT * 2, HEIGHT_CONTROL*(MAX_HOST+1),
-            parent, NULL,
-            hinst, NULL);		
-	int tool_num = sizeof(tool_set)/sizeof(struct function_t); 	
-	int i;
-	for(i = 0; i < tool_num; ++i)
-	{
-		ComboBox_AddString(hwnd,tool_set[i].name); 
-	}
-	ComboBox_SetCurSel(hwnd, 0);
-	return hwnd;
-}	
-
-static inline int DWORD_to_ipstr(DWORD ip, char *ip_str, int strlen)
-{
-	LPARAM lparam_ip = (LPARAM)ip;
-	snprintf(ip_str, strlen, "%d.%d.%d.%d",FIRST_IPADDRESS(lparam_ip), 
-				SECOND_IPADDRESS(lparam_ip), THIRD_IPADDRESS(lparam_ip),
-				FOURTH_IPADDRESS(lparam_ip));
-	return 0;
-}
-
-static int set_usbnet(DWORD ip_old, DWORD ip_new)
-{
-	int ret = 0;
-	char ip_old_str[16];
-	char cmd[256];
-	DWORD_to_ipstr(ip_old, ip_old_str, 16);
-	
-	log_info("set usbnet %s -> %d.%d.0.0", ip_old_str, FIRST_IPADDRESS(ip_new), SECOND_IPADDRESS(ip_new));
-	//affect after reboot
-	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set usb 0 %d.%d",FIRST_IPADDRESS(ip_new), 
-				SECOND_IPADDRESS(ip_new));
-	if(ret = exec_file_in_tg(ip_old_str, "/usr/bin/unlock /", 1))
-		return ret;
-	if(ret = exec_file_in_tg(ip_old_str, cmd, 1))
-		return ret;	
-	return exec_file_in_tg(ip_old_str, "/usr/bin/lock /", 1);
-}
-static int set_intranet(DWORD ip_old, DWORD ip_new)
-{
-	int ret = 0;
-	char ip_old_str[16];
-	char ip_new_str[16];
-	char cmd[256];
-	DWORD_to_ipstr(ip_old, ip_old_str, 16);
-	DWORD_to_ipstr(ip_new, ip_new_str, 16);
-	
-	log_info("set intranet_addr %s -> %s", ip_old_str, ip_new_str);
-	//affect after reboot
-	snprintf(cmd, 256, "/usr/bin/set_ipconfig.sh set ether 0 %s", ip_new_str);
-	if(ret = exec_file_in_tg(ip_old_str, "/usr/bin/unlock /", 1))
-		return ret;
-	if(ret = exec_file_in_tg(ip_old_str, cmd, 1))
-		return ret;	
-	return exec_file_in_tg(ip_old_str, "/usr/bin/lock /", 1);
-}
-
-static inline void dump_project(void)
-{	
-	log_print("Tool type : "
-#ifdef MAINTAINMENT
-	"maintainment"
-#elif defined(DEVELOPMENT)
-	"developer"
-#elif defined(PRODUCTION)
-	"production"
-#endif
-	" tool for %s.\tVersion : %s.\n",PROJECT,VERSION);
-
-}
-
-
-static inline void dump_ini_info(void)
-{
-	int i;	
-	log_print("ini info:\n");
-	log_print("\tini_file = %s\n",ini_file);
-	log_print("\tini_file_info.ip_should_flash = %d\n",ini_file_info.ip_should_flash);
-	log_print("\tip list = ");
-	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
-	{
-		log_print("%s\t",ini_file_info.ip[i]);
-	}
-	log_print("\n");
-	log_print("\tini_file_info.name_of_image = %s\n",ini_file_info.name_of_image);
-	log_print("\tini_file_info.name_of_rescue_image = %s\n",ini_file_info.name_of_rescue_image);
-}
-
-static inline void dump_download_varibles(void)
-{	
-	log_print("global varibles:\n");	
-	log_print("\tburn_mode = %s\n",burn_mode == SELECT_LINUX_PROGRAMMING ? "linux" :
-	(burn_mode == SELECT_SPL_PROGRAMMING ? "spl" :
-	(burn_mode == SELECT_MFG_PROGRAMMING ? "mfg" : "invalid burn mode")));
-	
-	log_print("\tlistening_on = %s\n",listening_on == IS_LISTENING_ON_MFG ? "IS_LISTENING_ON_MFG" : 
-	(listening_on == IS_LISTENING_ON_SPL ? "IS_LISTENING_ON_SPL" :
-	(listening_on == IS_LISTENING_ON_NOTHING ? "IS_LISTENING_ON_NOTHING" : "INVALID VALUE")));
-	
-	if(burn_mode == SELECT_MFG_PROGRAMMING)
-		log_print("\tg_on_batch = %s\n",g_on_batch == TRUE ? "TRUE" : "FALSE");
-	log_print("\tpartition_selected = 0x%04x\n",partition_selected);
 }
 
 static inline void reset_general_handler(int select)
@@ -879,118 +353,6 @@ static inline void reset_general_handler(int select)
 	}
 }
 
-static int OnBtnChange(void) //only for utils page and must in app mode
-{
-	int ret = 0;
-	char ipstr_reboot[16];
-	char ipstr_old[16], ipstr_new[16];
-	EnableWindow(hwndTab, FALSE);
-	EnableWindow(hwndBtnChange, FALSE);
-	DWORD ip_old, ip_new, ip_reboot;
-	DWORD mask, old_subnet, new_subnet;
-	//get ip
-	SendMessage(hwndUtilsIpAddrDeviceIP, IPM_GETADDRESS, 0, (LPARAM)&ip_old);
-	SendMessage(hwndUtilsIpAddrChangeto, IPM_GETADDRESS, 0, (LPARAM)&ip_new);
-	int selection = ComboBox_GetCurSel(hwndUtilsComboHost);	
-	
-	/*for log*/
-	DWORD_to_ipstr(ip_old, ipstr_old, 16);
-	DWORD_to_ipstr(ip_new, ipstr_new, 16);
-	log_print("ChangeIp: selection = %d, ip_old = %s, ip_new = %s\n", selection, ipstr_old, ipstr_new);
-
-	
-#if 1 //disable USB_M1S1 and USB_M1S2
-	if(selection == SEL_ALL) //usb
-	{
-		int i;
-		if(ret = check_ip_addr(ip_new, USB_IP))
-			goto end;
-		mask = hosts[SEL_ALL].usb_addr;
-		old_subnet = ip_old & mask;
-		new_subnet = ip_new & mask;				
-		for(i = MAX_HOST; i > 0; --i)
-		{
-			ip_old = old_subnet | (hosts[i].eth_addr & ~mask);
-			ip_new = new_subnet | (hosts[i].eth_addr & ~mask);
-			if(ret = set_usbnet(ip_old, ip_new))			
-				break;			
-		}
-		//reboot master
-		DWORD_to_ipstr(old_subnet | (hosts[SEL_M1S2].eth_addr & ~mask), ipstr_reboot, 16);
-	}
-	else//intranet
-	{
-		if(ret = check_ip_addr(ip_new, INTRANET_IP))
-			goto end;
-		mask = hosts[SEL_ALL].intranet_addr;
-		old_subnet = ip_old & mask;
-		new_subnet = ip_new & mask;
-		ret = set_intranet(ip_old, ip_new);
-		DWORD_to_ipstr(ip_old, ipstr_reboot, 16);
-	}
-	
-#else//enable USB_M1S1 and USB_M1S2
-	if(selection == SEL_INTRANET)
-	{
-		mask = hosts[SEL_ALL].intranet_addr;
-		old_subnet = ip_old & mask;
-		new_subnet = ip_new & mask;
-		ret = set_intranet(ip_old, ip_new);
-		DWORD_to_ipstr(ip_old, ipstr_reboot, 16);
-	}
-	else
-	{
-		mask = hosts[SEL_ALL].eth_addr;
-		old_subnet = ip_old & mask;
-		new_subnet = ip_new & mask;
-		if(selection == SEL_ALL)
-		{
-			int i;			
-			for(i = MAX_HOST; i > 0; --i)
-			{
-				ip_old = old_subnet | (hosts[i].eth_addr & ~mask);
-				ip_new = new_subnet | (hosts[i].eth_addr & ~mask);
-				if(ret = set_usbnet(ip_old, ip_new))			
-					break;			
-			}
-			//reboot master
-			DWORD_to_ipstr(old_subnet | (hosts[SEL_M1S2].eth_addr & ~mask), ipstr_reboot, 16);
-		}
-		else{			
-			ip_old = old_subnet | (hosts[selection].eth_addr & ~mask);
-			ip_new = new_subnet | (hosts[selection].eth_addr & ~mask);
-			ret = set_usbnet(ip_old, ip_new);
-			//reboot self
-			DWORD_to_ipstr(old_subnet | (hosts[selection].eth_addr & ~mask), ipstr_reboot, 16);
-		}
-	}	
-#endif	
-	if(ret == 0)//reboot master M1S2
-	{	
-		ret = RebootTarget(ipstr_reboot);
-		//log_print("reboot after changeip, ipstr_reboot = %s\n", ipstr_reboot);
-	}
-end:
-	EnableWindow(hwndBtnChange, TRUE);
-	EnableWindow(hwndTab, TRUE);
-	return ret;
-}
-
-static int download_dsp_image(LPARAM target_ip, char *local_image)
-{
-	int ret = 0;
-	char target_ip_str[16];
-	snprintf(target_ip_str, 16, "%d.%d.%d.%d",FIRST_IPADDRESS(target_ip), 
-				SECOND_IPADDRESS(target_ip), THIRD_IPADDRESS(target_ip),
-				FOURTH_IPADDRESS(target_ip));
-	log_info("download DSP Image : ip = %s, DspImage = %s\n",target_ip_str, local_image);
-	//unlock rootfs
-	if(ret = exec_file_in_tg(target_ip_str,"/usr/bin/unlock /", 1))
-		return ret;	
-	if(ret = download_file(target_ip_str, local_image, TARGET_DSP_IMAGE))
-		return ret;
-	return exec_file_in_tg(target_ip_str, "/usr/bin/lock /", 1);
-}
 static int OnBtnDspDownload(void)
 {
 	int ret = -1;
@@ -1026,7 +388,7 @@ static int OnBtnReboot(void)
 	char ipstr[16];	
 	EnableWindow(hwndTab, FALSE);
 	EnableWindow(hwndBtnReboot, FALSE);
-	//get ip
+	
 	SendMessage(hwndUtilsIpAddrDeviceIP, IPM_GETADDRESS, 0, (LPARAM)&target_ip);
 	DWORD_to_ipstr((DWORD)target_ip, ipstr, 16);
 	ret = RebootTarget(ipstr);	
@@ -1129,7 +491,7 @@ static BOOL process_partitionlist(HWND hwnd)
 	{
 		if(hwnd == hwndPartitionCheckBox[i])
 		{
-			if(i == 3 && Button_GetCheck(hwndPartitionCheckBox[i]) == BST_UNCHECKED)//calibration
+			if(i == 2 && Button_GetCheck(hwndPartitionCheckBox[i]) == BST_UNCHECKED)//calibration
 			{
 				if(IDYES == MessageBox(hwndMain,TEXT("WARNING:This partition should never been checked unless you exectly known what it is repesent for.\nCheck it anyway?"),szAppName,MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2))
 				{
@@ -1241,12 +603,14 @@ static BOOL get_image_info(const char*image)
 	log_print("image info:\n");
 	log_print("\timage = %s\n",image);
 	log_print("\timage_header.image_version = %s\n",image_header.image_version);
-	log_print("\timage_header.release_version = %s\n",image_header.release_version);
+	log_print("\timage_header.project_name = %s\n",image_header.project_name);
+	log_print("\timage_header.sys_version = %s\n", image_header.sys_version);
+	log_print("\timage_header.app_version = %s\n", image_header.app_version);
 	log_print("\timage_header.total_partitions = %d\n",image_header.total_partitions);
-	log_print("\timage_header.instruction_ver_of_ipl = 0x%0x\n",image_header.instruction_ver_of_ipl);
+	
 	
 	/*make some check if it's valid image,the init function in libupgrade will do that,but i want get partition info first*/
-	memcpy(image_type,image_header.release_version,UNI_MAX_REL_VERSION_LEN);
+	memcpy(image_type,image_header.project_name,UNI_MAX_REL_VERSION_LEN);
 	strtok(image_type,";");
 	if(
 #ifdef CONFIG_PROJECT_U4
@@ -1278,133 +642,6 @@ static BOOL get_image_info(const char*image)
 	return TRUE;
 }
 
-/*get src 's filename concatenate to dest
-* dest is linux filename
-* src is windows filename
-*/
-static inline int get_abs_file_name(char *dest,const char *src)
-{
-	if(dest == NULL || src == NULL)
-		return FALSE;
-	char tmp_buf[MAX_PATH];
-	int i = 0;
-	dest += strlen(dest);
-	src += strlen(src);
-	while(*src != '\\')
-		tmp_buf[i++] = *src--;
-	--i;
-	if(*(dest-1) != '/')
-		*dest++ = '/';
-	
-	while(i >= 0)
-		*dest++ = tmp_buf[i--];
-	
-	return TRUE;
-}
-
-/*just replace all '\' to '/' */
-static inline char *dir_win32_to_linux(char *dir)
-{
-	static char linux_dir[256];
-	strncpy(linux_dir,dir,256);
-	dir = linux_dir;
-	while(*dir)
-	{
-		if(*dir == '\\')
-			*dir = '/';
-		++dir;
-	}
-	return linux_dir;	
-}
-static inline int get_file_len(const char *file)
-{
-	int retval = -1;
-	FILE *fp = fopen(file,"rb");
-	if(fp == NULL)
-	{		
-		return retval;
-	}
-	fseek(fp,0,SEEK_END);
-	retval = ftell(fp);
-	fclose(fp);
-	return retval;
-}
-static inline int read_file(void *buff,int len,const char *filename)
-{
-	int retval = -1;
-	FILE *fp = fopen(filename,"rb");
-	if(fp == NULL)
-	{
-		retval = ERROR_CODE_OPEN_FILE_ERROR;
-		return retval;
-	}
-	retval = fread(buff,1,len,fp);	
-	fclose(fp);
-	return retval;
-}
-static inline int write_file(void *buff,int len,const char *filename)
-{
-	int retval = -1;
-	FILE *fp = fopen(filename,"wb+");
-	if(fp == NULL)
-		return retval;
-	retval = fwrite(buff,1,len,fp);
-	fclose(fp);
-	return retval;
-}
-
-
-static inline BOOL parse_ip_list(const char *ip_list)
-{
-	char buff[256],*ip;	
-	int ip_cnt = 0;
-	ini_file_info.ip_should_flash = 0;
-	if(strlen(ip_list) > 256)
-		return FALSE;
-	strcpy(buff,ip_list);
-	ip = strtok(buff," \t");	
-	while(ip)
-	{
-		if(strlen(ip) > 16)
-			return FALSE;
-		strcpy(ini_file_info.ip[ip_cnt++],ip);		
-		ip = strtok(NULL," \t");
-	}
-	if(ip_cnt > 4)
-		return FALSE;
-	ini_file_info.ip_should_flash = ip_cnt;
-	return TRUE;
-}
-static inline BOOL parse_ini_file(const char *file)
-{	
-	const char *ip_list,*image,*rescue_image;
-	/*read the ini file and parse it into struct*/
-	/*clear ini information*/
-	memset(&ini_file_info,0,sizeof(ini_file_info));
-	dictionary *ini_config = iniparser_load(file);
-	if(ini_config == NULL)
-	{		
-		return FALSE;
-	}
-	if(iniparser_getnsec(ini_config) != 1)
-	{
-		goto EXIT;
-	}
-	ip_list = iniparser_getstring(ini_config,"Options:ip",NULL);
-	image = iniparser_getstring(ini_config,"Options:image",NULL);
-	rescue_image = iniparser_getstring(ini_config,"Options:rescue_image",NULL);
-	if(ip_list != NULL)
-		parse_ip_list(ip_list);
-	if(image && strlen(image) < MAX_PATH)
-		strcpy(ini_file_info.name_of_image,image);
-	if(rescue_image && strlen(rescue_image) < MAX_PATH)
-		strcpy(ini_file_info.name_of_rescue_image,rescue_image);
-	iniparser_freedict(ini_config);
-	return TRUE;
-EXIT:
-	iniparser_freedict(ini_config);
-	return FALSE;	
-}
 /*Description:
 * 		check if ini file exsit and it's valid for current burn_mode
 * burn_mode = SELECT_LINUX_PROGRAMMING:
@@ -1428,7 +665,7 @@ static BOOL check_ini(void)
 		error_code = EC_INI_FILE_NOT_EXSIT;
 		return FALSE;
 	}
-	BOOL ret = parse_ini_file(ini_file);
+	BOOL ret = parse_ini_file(&ini_file_info, ini_file);
 	dump_ini_info();
 	if(ret == FALSE)
 	{		
@@ -1497,6 +734,8 @@ static BOOL check_ini(void)
 	}
 	return TRUE;
 }
+
+
 static void ChangeProgressBar(int percent)
 {    
     char temp[16];   
@@ -1519,47 +758,6 @@ static inline void DestoryProgressBar(void)
 		hwndPop = NULL;
 	}	
     return;
-}
-
-static const char *get_error_info(unsigned short ec)
-{
-    int i;	
-	/*first find it in ui_error_code_info table*/
-	for(i = 0; i < (sizeof(ui_error_code_info)/sizeof(ui_error_code_info[0]));i++)
-	{
-		if(ec == ui_error_code_info[i].ec)
-			return ui_error_code_info[i].string;
-	}
-	/*ec is not in ui_error_code_info table,then find it in error_code_info table*/
-    for (i=0; i<(sizeof(error_code_info)/sizeof(error_code_info[0])); i++)
-    {
-		if (error_code_info[i].ec == ec)
-        {
-            return (char *)error_code_info[i].string;
-        }
-    }
-	/*not found*/
-    return ec_not_found;
-}
-static const char *get_short_info(unsigned short ec)
-{
-	int i;	
-	/*first find it in ui_error_code_info table*/
-	for(i = 0; i < (sizeof(ui_error_code_info)/sizeof(ui_error_code_info[0]));i++)
-	{
-		if(ec == ui_error_code_info[i].ec)
-			return ui_error_code_info[i].short_string;
-	}
-	/*ec is not in ui_error_code_info table,then find it in error_code_info table*/
-    for (i=0; i<(sizeof(error_code_info)/sizeof(error_code_info[0])); i++)
-    {
-		if (error_code_info[i].ec == ec)
-        {
-            return (char *)error_code_info[i].short_string;
-        }
-    }
-	/*not found*/
-    return ec_not_found;
 }
 
 static const GUID GUID_DEVCLASS_AD6900_SPL = {0xb35924d6UL, 0x3e16, 0x4a9e, {0x97, 0x82, 0x55, 0x24, 0xa4, 0xb7, 0x9b, 0xac}};
@@ -1731,7 +929,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 			}		
 			const char *partition = NULL;
 			if(index < total_partition)
-				partition = partition_name[index];
+				partition = partition_name[index-1];
 			else if(index == 11)
 				partition = "image";
 			else
@@ -2125,40 +1323,9 @@ static void InitLinuxWindow(void)
             hInst, NULL);
 
     debug_positions(hwndLinBtnBrowser, "hwndLinBtnBrowser");  
-
-	relative_x = GBOX1_START_X + H_GAPS * 2;
-    relative_y += HEIGHT_CONTROL + V_GAPS*2;
 	
-	hwndLinStaticIP = CreateWindow(TEXT ("static"), "IPAddr:",
-            WS_CHILD | WS_VISIBLE | SS_RIGHT,
-            relative_x, relative_y + WIN_STATIC_OFFSET,
-            WIDTH_TEXT, HEIGHT_CONTROL,
-            hwndLinPage, NULL,
-            hInst, NULL);
-	relative_x += WIDTH_TEXT + H_GAPS * 2;
-	
-	hwndLinCommIP = create_and_init_ip_widget(relative_x, relative_y, hwndLinPage, hInst, hosts[SEL_M1S2].eth_addr & hosts[SEL_ALL].usb_addr);
-  
-	relative_x += WIDTH_IPADDR + X_MARGIN;
-	
-	hwndLinStaticIPMask = CreateWindow(TEXT("static"), "/16",
-			WS_CHILD | WS_VISIBLE | WS_DISABLED | SS_LEFT,
-			relative_x, relative_y + WIN_STATIC_OFFSET,
-			WIDTH_TEXT/2, HEIGHT_CONTROL,
-			hwndLinPage, NULL,
-			hInst, NULL);
-	relative_x += WIDTH_TEXT/2 + X_MARGIN;
-	
-	hwndLinStaticHost = CreateWindow(TEXT("static"), "Type:",
-			WS_CHILD | WS_VISIBLE | SS_RIGHT,
-			relative_x, relative_y + 2*WIN_STATIC_OFFSET,
-			WIDTH_TEXT/2, HEIGHT_CONTROL,
-			hwndLinPage, NULL,
-			hInst, NULL);
-	relative_x += WIDTH_TEXT/2 + X_MARGIN;
-	hwndLinComboHost = create_and_init_host_combo(relative_x, relative_y, hwndLinPage, hInst, SELECT_LINUX_PROGRAMMING);
-	
-	relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
+    relative_y += HEIGHT_CONTROL + V_GAPS*2;	
+		
 	console_print("hwndLinBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
     hwndLinBtnDown = CreateWindow( TEXT ("button"), "Download",
@@ -2368,39 +1535,6 @@ static void InitSPLWindow(void)
             hInst, NULL);
 
     debug_positions(hwndSPLStaticBrowser, "hwndSPLStaticBrowser");
-	
-	relative_x += WIDTH_EDIT + X_MARGIN;
-	relative_y += HEIGHT_CONTROL + Y_MARGIN;
-	
-
-#if 0&&(defined(CONFIG_PROJECT_BR01) || defined(CONFIG_PROJECT_BR01_2ND))
-	
-	hwndSPLIpAddr = CreateWindow(TEXT("static"), "DevIpAddr:",
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndSPLPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndDevLists, "hwndDevLists");
-	relative_x += WIDTH_BUTTON + X_MARGIN;
-	
-	hwndSPLDevList = CreateWindowEx(WS_EX_CLIENTEDGE,TEXT("ComboBox"),"",
-			WS_CHILD | WS_VISIBLE |CBS_DROPDOWNLIST|CBS_HASSTRINGS|CBS_UPPERCASE | CBS_AUTOHSCROLL,
-			relative_x,relative_y,
-			WIDTH_COMBO, HEIGHT_CONTROL*5,
-            hwndSPLPage, NULL,
-            hInst, NULL);
-	relative_x += WIDTH_COMBO + X_MARGIN;		
-	hwndSPLBtnRefresh = CreateWindow(TEXT("button"), "Refresh",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            relative_x, relative_y,
-            WIDTH_BUTTON, HEIGHT_CONTROL,
-            hwndSPLPage, NULL,
-            hInst, NULL);
-
-    debug_positions(hwndSPLBtnRefresh, "hwndSPLBtnRefresh");
-#endif
 
     relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     relative_y = start_y_of_Groupbox2;
@@ -2618,17 +1752,7 @@ static void InitMFGWindow(void)
 	
     console_print("hwndMFGBtnDown's dim: x=%d, y=%d, width=%d, height=%d\n",
             relative_x, relative_y, WIDTH_BUTTON, HEIGHT_CONTROL);
-			
-	relative_x = GBOX1_START_X + X_MARGIN;		
-	/* hwndMFGStaticIP = CreateWindow(TEXT ("static"), "IpAddr:",
-            WS_CHILD | WS_VISIBLE | SS_RIGHT,
-            relative_x, relative_y,
-            WIDTH_TEXT, HEIGHT_CONTROL,
-            hwndMFGPage, NULL,
-            hInst, NULL); */
-	relative_x += WIDTH_TEXT +X_MARGIN;
-	//hwndMFGCommIP = create_and_init_ip_widget(relative_x, relative_y, hwndMFGPage, hInst);
-		
+	
 	relative_x = max_Groupbox2_width - WIDTH_BUTTON - X_MARGIN;
     hwndMFGBtnDown = CreateWindow( TEXT ("button"), "Download",
             WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_PUSHBUTTON ,
@@ -2718,7 +1842,7 @@ static BOOL InitUtilsWindow(void)
 			
 	relative_x += WIDTH_TEXT + X_MARGIN;
 	
-	hwndUtilsIpAddrDeviceIP = create_and_init_ip_widget(relative_x, relative_y, hwndUtilsPage, hInst, hosts[SEL_M1S2].eth_addr);	
+	//hwndUtilsIpAddrDeviceIP = create_and_init_ip_widget(relative_x, relative_y, hwndUtilsPage, hInst, hosts[SEL_M1S2].eth_addr);	
 
 	relative_x = Groupbox1_start_x + Groupbox1_width - WIDTH_BUTTON - client_gap;
 	hwndBtnReboot = CreateWindow(TEXT("button"), "Reboot",
@@ -2747,7 +1871,7 @@ static BOOL InitUtilsWindow(void)
 			
 	relative_x += WIDTH_TEXT + X_MARGIN;
 	
-	hwndUtilsIpAddrChangeto = create_and_init_ip_widget(relative_x, relative_y, hwndUtilsPage, hInst, hosts[SEL_M1S2].eth_addr & hosts[SEL_ALL].usb_addr);
+	//hwndUtilsIpAddrChangeto = create_and_init_ip_widget(relative_x, relative_y, hwndUtilsPage, hInst, hosts[SEL_M1S2].eth_addr & hosts[SEL_ALL].usb_addr);
 	relative_x += WIDTH_IPADDR + X_MARGIN;
 	hwndUtilsStaticChangeToMask = CreateWindow(TEXT("static"), "/16",
 			WS_CHILD | WS_VISIBLE | WS_DISABLED | SS_LEFT,
@@ -2764,7 +1888,7 @@ static BOOL InitUtilsWindow(void)
 			hwndUtilsPage, NULL,
 			hInst, NULL);
 	relative_x += WIDTH_TEXT/2 + X_MARGIN;
-	hwndUtilsComboHost = create_and_init_host_combo(relative_x, relative_y, hwndUtilsPage, hInst, SELECT_UTILS);
+	//hwndUtilsComboHost = create_and_init_host_combo(relative_x, relative_y, hwndUtilsPage, hInst, SELECT_UTILS);
 	
 	relative_x = Groupbox1_start_x + Groupbox1_width - WIDTH_BUTTON - client_gap;
 	
@@ -2838,7 +1962,7 @@ static BOOL InitUtilsWindow(void)
 			
 	relative_x += WIDTH_TEXT + X_MARGIN;
 	
-	hwndComboExtraToolList = create_and_init_tool_list(relative_x, relative_y, hwndUtilsPage, hInst);
+	//hwndComboExtraToolList = create_and_init_tool_list(relative_x, relative_y, hwndUtilsPage, hInst);
 	
 	//relative_x += WIDTH_TEXT*2 + X_MARGIN;
 	relative_x = Groupbox3_start_x + Groupbox3_width - WIDTH_BUTTON - client_gap;
@@ -2991,7 +2115,7 @@ static int linux_init(const char *ip)
 	dump_time();
 	log_print("WinUpgradeLibInit() : image = %s,image_length = %d,ip = %s,battery_check_sign = %d.\n",
 		image,image_length,ip,battery_check_sign);
-	retval = WinUpgradeLibInit(image,image_length,ip,battery_check_sign);
+	retval = WinUpgradeLibInit(image, image_length, ip, battery_check_sign);
 	dump_time();
 	log_print("retval = %d\n",retval);	
 	if(retval < 0)
@@ -3010,88 +2134,7 @@ static int linux_download(void)
 	char ip_info[256];
 	dump_time();
 	log_print("linux_download() called.\n");
-	
-	//set ip info into ini_file_info
-	//no change for SPL burn mode yet
-	int selection = -1;
-	DWORD specified_ip;
-	DWORD mask;
-	char ipstr_master[16];
-	char initrd_ip[16];
-	char ipstr[16];
-	DWORD dword_ip;
-	
-	if(burn_mode == SELECT_LINUX_PROGRAMMING)
-	{		
-		selection = ComboBox_GetCurSel(hwndLinComboHost);
-		SendMessage(hwndLinCommIP, IPM_GETADDRESS, 0, (LPARAM)&specified_ip);
-		DWORD_to_ipstr(specified_ip, ipstr, 16);
-		log_print("selection = %d, input_ip = %s\n", selection, ipstr);
-		if(selection == SEL_INTRANET)
-		{
-			mask = hosts[SEL_ALL].intranet_addr;
-			ini_file_info.ip_should_flash = 1;			
-			if((retval = get_socid(ipstr)) < 0)
-				goto linux_download_error;
-			
-			ini_file_info.dword_ip[0] = (mask & specified_ip) | (~mask & hosts[retval].intranet_addr);
-			DWORD_to_ipstr(ini_file_info.dword_ip[0], ini_file_info.ip[0], 16);
-								
-			if(retval = exec_script_in_target(ipstr, "echo upg > /sys/sysdevs/bootmode"))
-				goto linux_download_error;			
-			if(retval = RebootTarget(ipstr))
-				goto linux_download_error;
-			
-			//set ipstr_master
-			strncpy(ipstr_master, ini_file_info.ip[0], 16);
-			
-			SetDynamicInfo("Wait for reboot");
-			Sleep(5000);//wait for target enter into upg mode
-			StopDynamicInfo();
-		}
-		else
-		{			
-			int host_count = 0;
-			mask = hosts[SEL_ALL].usb_addr;			
-			if(selection == SEL_ALL || selection == SEL_M1S1) //slave first
-			{				
-				ini_file_info.dword_ip[host_count] = hosts[SEL_M1S1].eth_addr;
-				DWORD_to_ipstr(ini_file_info.dword_ip[host_count], ini_file_info.ip[host_count], 16);
-				
-				DWORD_to_ipstr((mask & specified_ip) | (~mask & hosts[SEL_M1S1].eth_addr), ipstr, 16);
-				if(retval = exec_script_in_target(ipstr, "echo upg > /sys/sysdevs/bootmode"))
-					goto linux_download_error;				
-				++host_count;
-				
-			}
-			if(selection == SEL_ALL || selection == SEL_M1S2) //master
-			{
-				ini_file_info.dword_ip[host_count] = hosts[SEL_M1S2].eth_addr;
-				DWORD_to_ipstr(ini_file_info.dword_ip[host_count], ini_file_info.ip[host_count], 16);
-				//exec_script_in_target(ini_file_info.ip[host_count], "echo upg > /sys/sysdevs/bootmode");	
-				++host_count;
-			}
-			ini_file_info.ip_should_flash = host_count;
-			DWORD_to_ipstr((mask & specified_ip) | (~mask & hosts[SEL_M1S2].eth_addr), ipstr_master, 16);
-			if(retval = exec_script_in_target(ipstr_master, "echo upg > /sys/sysdevs/bootmode"))
-				goto linux_download_error;
-			
-			if(retval = RebootTarget(ipstr_master))
-				goto linux_download_error;
-			
-			//reset ipstr_master
-			DWORD_to_ipstr(hosts[SEL_M1S2].eth_addr, ipstr_master, 16);
-			SetDynamicInfo("Wait for reboot");
-			Sleep(5000);//wait for target enter into upg mode
-			StopDynamicInfo();
-		}
 		
-	}
-	else//set ipstr_master for MFG and SPL
-	{
-		DWORD_to_ipstr(hosts[SEL_M1S2].usb_addr, ipstr_master, 16);
-	}		
-	
 	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
 	{		
 		ip = ini_file_info.ip[i];
@@ -3102,12 +2145,10 @@ static int linux_download(void)
 			SetWindowText(hwndIpInfo,ip_info);
 		}
 		log_print("ip = %s\n",ip);
-#endif
-				
-		/*master is the last initrd_ip*/
-		strncpy(initrd_ip, ini_file_info.ip[i], 16);
+#endif		
+		
 		SetDynamicInfo(LINUX_INIT);	
-		retval = linux_init(initrd_ip);//ip changeto default ip_addr
+		retval = linux_init(ip);//ip changeto default ip_addr
 		StopDynamicInfo();	
 		if(retval < 0)
 		{			
@@ -3131,22 +2172,15 @@ static int linux_download(void)
 			StopDynamicInfo();
 			listening_on = IS_LISTENING_ON_NOTHING;
 		}
-		if(burn_mode == SELECT_LINUX_PROGRAMMING)
-		{
-			/* save network config file*/
-			save_net_config(initrd_ip);					
-		}
 		
 		transfer_start();/*start a progress thread*/	
 		dump_time();
 #ifdef DEVELOPMENT
 		log_print("burnpartition() : partition_selected = 0x%04x\n",partition_selected);
 		retval = burnpartition(partition_selected);
-#elif defined(MAINTAINMENT)
-		
+#elif defined(MAINTAINMENT)		
 		if(Button_GetCheck(hwndCheckBoxUserdata) == BST_UNCHECKED)
 		{
-
 			log_print("burnpartition() : partition_selected = 0x%04x\n",((1<<total_partition)-1)&~0x000B);
 			retval = burnpartition(((1<<total_partition)-1)&~0x000B);
 		}
@@ -3190,63 +2224,29 @@ static int linux_download(void)
 			snprintf(error_msg,ERROR_INFO_MAX,"Linux download failed! Error code is %s.",get_error_info(retval));
 			goto linux_download_error;
 		}
-		//change ip back
-		//spl mode will change ip back that specified in ini_file
-		/* restore network config file*/
-		if(burn_mode == SELECT_LINUX_PROGRAMMING)
-		{		
-			restore_net_config(initrd_ip);			
-		}
 		
 	}
-	//reboot master to reboot every soc
-	//Sleep(1000);//wait a moment to reboot
-	if(retval = RebootTarget(ipstr_master)){
-		log_print("reboot failed, ipstr_master = %s, error code is %x.\n", ipstr_master, retval);		
-		ERROR_MESSAGE("Reboot target failed, please reboot it manual(0x%04X).", retval);
-	}		
-	//log_print("return from reboot, ipstr_master = %s\n", ipstr_master);
+	
 	return 0;
 linux_download_error:	
 	return retval;
 }
 
-static BOOL spl_init(void)
-{	
-	image_length = get_file_len(ini_file_info.name_of_rescue_image);
-	if(image_length <= 0)
-	{
-		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
-		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
-		return FALSE;
-	}
-	return TRUE;
-}
 static int spl_download(void)
 {
 	int retval = -1;
 	dump_time();
 	log_print("spl_download() called.\n");
-	
-	SetDynamicInfo("SPL init");
-	BOOL ret = spl_init();
-	StopDynamicInfo();
-	if(FALSE == ret)
-	{
-		goto spl_download_error;
-	}
+		
 	SetWindowText(hwndInfo,"Waiting for SPL download..");
 	
 	dump_time();
 	log_print("burnSPL() : rescue_image = %s.\n",ini_file_info.name_of_rescue_image);
-	
-	transfer_start();
-	
-	retval = burnSPL(ini_file_info.name_of_rescue_image);
-	
+	transfer_start();	
+	retval = burnSPL(ini_file_info.name_of_rescue_image);	
 	transfer_complete();
 	dump_time();
-	log_print("retval = %d\n",retval);	
+		
 	if(retval != 0)
 	{		
 		snprintf(error_info,ERROR_INFO_MAX,"SPL download error.");		
@@ -3268,51 +2268,18 @@ static int spl_download(void)
 spl_download_error:	
 	return retval;
 }
-static BOOL mfg_init(void)
-{
-	int retval = -1;
-	char image[256];	
-	
-	strncpy(image,BrowserImage,256);
-	
-	image_length = get_file_len(image);
-	if(image_length <= 0)
-	{
-		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
-		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
-		return FALSE;
-	}
-	dump_time();
-	log_print("burnMFGinit() : image = %s\n", image);
-	retval = burnMFGinit(image);
-	dump_time();
-	log_print("retval = %d\n",retval);
-	if(retval != 0)
-	{
-		snprintf(error_info,ERROR_INFO_MAX,"MFG init error");
-		snprintf(error_msg,ERROR_INFO_MAX,"MFG init error,Error code is %s.",get_error_info(retval));
-		return FALSE;
-	}
-	return TRUE;
-}
+
 static int mfg_download(void)
 {	
 	int retval = -1;
 	dump_time();
 	log_print("mfg_download() called.\n");
-
-	SetDynamicInfo("MFG init");
-	BOOL ret = mfg_init();
-	StopDynamicInfo();
-	if(FALSE == ret)
-	{			
-		goto mfg_download_error;
-	}
+	
 	SetWindowText(hwndInfo,"Waiting for MFG download..");
 	dump_time();
 	log_print("burnMFG() called.\n");
 	transfer_start();
-	retval = burnMFG();
+	retval = burnMFG(ini_file_info.name_of_rescue_image);
 	transfer_complete();
 	dump_time();
 	log_print("retval = %d\n",retval);	
@@ -3323,12 +2290,12 @@ static int mfg_download(void)
 		goto mfg_download_error;
 	}
 		
-	SetDynamicInfo("Waiting for SPL device");
+	SetDynamicInfo("Waiting for Linux device");
 	Sleep(2000);	
 	StopDynamicInfo();
 	
-	SetWindowText(hwndInfo,"Waiting for SPL download..");	
-	retval = spl_download();	
+	SetWindowText(hwndInfo,"Waiting for Linux download..");	
+	retval = linux_download();	
 	if(retval != 0)
 	{
 		goto mfg_download_error;
@@ -3423,33 +2390,6 @@ static void mfg_download_complete_cb(int retval,void *private_data)
 	}		
 }
 
-static int DspDump(void)
-{
-	#define PC_DUMP_DIR		"./dump"
-	#define DSPDUMP_DIR		"/userdata/dspdump"
-	#define DSPDUMP_TBALL	"dspdump.tar.gz"
-	int retval;
-	char ipstr[16];
-	DWORD ip;
-	SendMessage(hwndUtilsIpAddrDeviceIP, IPM_GETADDRESS, 0 , (LPARAM)&ip);
-	DWORD_to_ipstr(ip, ipstr, 16);	
-	char script[256];
-	snprintf(script, 256, "[ -d \""DSPDUMP_DIR"\" ] && tar -zhcf /tmp/"DSPDUMP_TBALL" -C /userdata dspdump || exit %d", EC_NOENT);
-	//pack directory
-	if(retval = exec_script_in_target(ipstr, script))
-		return retval;
-	//upload package
-	//Sleep(1500);//wait for pack done
-	//prepre 'PC_DUMP_DIR' directory
-	CreateDirectory(PC_DUMP_DIR, NULL);
-	if(retval = upload_file(ipstr, PC_DUMP_DIR"/"DSPDUMP_TBALL, "/tmp/"DSPDUMP_TBALL))
-		return retval;
-	//delete file in target
-	if(retval = exec_script_in_target(ipstr, "[ -d \""DSPDUMP_DIR"\" ] && rm -rf /userdata/dspdump/*\n"))
-		return retval;
-	return 0;
-}
-
 /*********************Nand Programing Button Process***********************/
 static BOOL OnBtnBrowser(void)
 {
@@ -3539,33 +2479,15 @@ static BOOL ProcessUtilsCommand(WPARAM wParam, LPARAM lParam)
 			EnableWindow(hwndBtnDspDownload,TRUE);			
 		}
 		return TRUE;
-	}
-	else if(hwnd == hwndUtilsComboHost && HIWORD(wParam) == CBN_SELCHANGE){
-		int sel = SendMessage(hwnd, CB_GETCURSEL, 0, 0);
-		if(sel == 0)//usb
-		{			
-			config_ip_widget(hwndUtilsIpAddrChangeto, hosts[SEL_M1S2].eth_addr & hosts[SEL_ALL].usb_addr,
-					hwndUtilsStaticChangeToMask, hosts[SEL_ALL].usb_addr);
-		}
-		else if(sel == 1)//intranet
-		{			
-			config_ip_widget(hwndUtilsIpAddrChangeto, hosts[SEL_M1S2].intranet_addr,
-					hwndUtilsStaticChangeToMask, hosts[SEL_ALL].intranet_addr);
-		}
-		return TRUE;
-	}
+	}	
 	else if(hwnd == hwndComboExtraToolList && HIWORD(wParam) == CBN_SELCHANGE){
 		int sel = ComboBox_GetCurSel(hwndComboExtraToolList);
 		SetWindowText(hwndUtilsInfo, tool_set[sel].desc);
 		return TRUE;
 	}
 	
-	if(hwnd == hwndBtnChange)
-	{
-		g_background_func = OnBtnChange;
-		g_complete_func = generic_complete_cb;
-	}
-	else if(hwnd == hwndBtnDspDownload)
+	
+	if(hwnd == hwndBtnDspDownload)
 	{
 		g_background_func = OnBtnDspDownload;
 		g_complete_func = generic_complete_cb;
@@ -3594,21 +2516,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 	}*/
 	if(process_partitionlist(hwnd))
 		return TRUE;
-	if(hwnd == hwndLinComboHost && HIWORD(wParam) == CBN_SELCHANGE)
-	{
-		int sel = SendMessage(hwnd, CB_GETCURSEL, 0, 0);
-		if(sel == SEL_INTRANET)
-		{
-			config_ip_widget(hwndLinCommIP, hosts[SEL_M1S2].intranet_addr,
-					hwndLinStaticIPMask, hosts[SEL_ALL].intranet_addr);
-		}
-		else if(sel == SEL_ALL || sel == SEL_M1S1 || sel == SEL_M1S2)//usb
-		{
-			config_ip_widget(hwndLinCommIP, hosts[SEL_M1S2].usb_addr & hosts[SEL_ALL].usb_addr,
-					hwndLinStaticIPMask, hosts[SEL_ALL].usb_addr);
-		}
-		return TRUE;
-	}
+	
 #ifdef MAINTAINMENT
 	if(hwnd == hwndCheckBoxUserdata)
 	{
@@ -4131,10 +3039,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     }   
 #ifdef DEVELOPMENT
     InitLinuxWindow();
-	//InitSPLWindow();
+	InitSPLWindow();
 	InitMFGWindow();
-	InitUtilsWindow();
-	//InitFileTransferWindow();
+	//InitUtilsWindow();	
 	reset_general_handler(SELECT_LINUX_PROGRAMMING);
 #elif defined(MAINTAINMENT)
 	InitLinuxWindow();

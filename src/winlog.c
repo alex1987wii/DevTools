@@ -54,7 +54,7 @@ int openlog(const char *filename, int level, int type)
 
 }
 
-int log(int level, const char *fmt, ...)
+int winlog(int level, const char *fmt, ...)
 {
 	int retlen = 0;
 	static char level_info[12];
@@ -91,7 +91,7 @@ int log(int level, const char *fmt, ...)
 int closelog()
 {
 	if(log_fp)
-		close(log_fp);
+		fclose(log_fp);
 	log_fp = NULL;
 	return LOG_SUCCESS;
 }

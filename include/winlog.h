@@ -29,14 +29,14 @@ enum log_error_code_t{
 
 };
 int openlog(const char *filename, int level, int type);
-int log(int level, const char *fmt, ...);
+int winlog(int level, const char *fmt, ...);
 int closelog();
 
-#define log_emerg(fmt, ...)	log(LOG_EMERG, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
-#define log_error(fmt, ...)	log(LOG_ERR, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
-#define log_warn(fmt, ...)	log(LOG_WARN, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
-#define log_notice(fmt, ...)	log(LOG_NOTICE, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
-#define log_info(fmt, ...)	log(LOG_INFO, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
-#define log_debug(fmt, ...)	log(LOG_DEBUG, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
+#define log_emerg(fmt, ...)	winlog(LOG_EMERG, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
+#define log_error(fmt, ...)	winlog(LOG_ERR, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
+#define log_warn(fmt, ...)	winlog(LOG_WARN, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
+#define log_notice(fmt, ...)	winlog(LOG_NOTICE, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
+#define log_info(fmt, ...)	winlog(LOG_INFO, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
+#define log_debug(fmt, ...)	winlog(LOG_DEBUG, "%s:%s<%d>:"fmt, __FILE__, __func__, __LINE__, ##__VA_ARGS__)
 
 #endif

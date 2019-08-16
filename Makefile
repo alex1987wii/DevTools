@@ -22,22 +22,14 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=$(strip BR01_2ND)
+PROJECT=$(strip U5_BBA)
 VERSION=v02p01e
-valid_proj=BR01 BR01_2ND
+valid_proj=U5_BBA
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
     $(foreach pro,$(valid_proj),$(warning $(pro)))
     $(warning)
     $(error you specified $(PROJECT) which is not a valid project)
-endif
-
-U3LIB=U3 U3_2ND
-
-ifeq ($(strip $(foreach pro,$(U3LIB),$(shell [ "$(pro)" = "$(PROJECT)" ] && echo "$(PROJECT)"))),)
-    LIB=Gx
-else
-    LIB=U3
 endif
 
 # compiler and bin utilities definitions
@@ -47,9 +39,12 @@ RC=windres
 
 # compile flag and link flag definitions
 
-CFLAGS  = -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(LIB)/include 
-LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./lib -liniparser
+CFLAGS  = -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include 
+LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./lib -lupgrade -liniparser
 
+
+HEADER = $(wildcard ./include/*.h)
+src-y = src/error_code.c src/utils.c src/winlog.c
 # build target and dependency definitions
 TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED)
 TARGET_DEV = UniDevTools.exe
@@ -57,9 +52,8 @@ TARGET_LIMITED = UniDevLimitedTools.exe
 TARGET_MAINTAIN = UniMaintainTools.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
 WIN_TOOL_PATH=./output/$(PROJECT)
-LIBS=./$(LIB)/lib/libupgrade.dll
+LIBS=./lib/libupgrade.dll
 UTILS=./utils #only for linux
-OBJS=./src/winlog.o
 
 DEPS = devToolsRes.h
 
@@ -76,17 +70,17 @@ all: clean ./lib/libiniparser.a $(TARGETS) install
 %.o:%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-$(TARGET_MAINTAIN):resource_maintain.o devToolsUI_maintain.o $(OBJS)
-	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)
+$(TARGET_MAINTAIN):resource_maintain.o devToolsUI_maintain.o $(src-y) 
+	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS) $(CFLAGS) -DMAINTAINMENT
 
-$(TARGET_DEV):resource_dev.o devToolsUI_dev.o $(OBJS)
-	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)   
+$(TARGET_DEV):resource_dev.o devToolsUI_dev.o  $(src-y)
+	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS) $(CFLAGS) -DDEVELOPMENT
 
-$(TARGET_PRODUCTION):resource_product.o devToolsUI_product.o $(OBJS)
-	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)   
+$(TARGET_PRODUCTION):resource_product.o devToolsUI_product.o $(src-y) 
+	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)  $(CFLAGS) -DPRODUCTION 
 
-$(TARGET_LIMITED):resource_limited.o devToolsUI_limited.o $(OBJS)
-	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)   
+$(TARGET_LIMITED):resource_limited.o devToolsUI_limited.o $(src-y)
+	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)  $(CFLAGS) -DDEVELOPMENT -DLIMITED
 
 # resourece object                          
 resource_maintain.o: devTools.rc devToolsRes.h
@@ -102,17 +96,17 @@ resource_limited.o: devTools.rc devToolsRes.h
 	$(RC) $< -DDEVELOPMENT -DLIMITED $@
 
 # UI object
-devToolsUI_maintain.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
-	$(CC) -c -o $@ -DMAINTAINMENT $(CFLAGS) $<
+devToolsUI_maintain.o: devToolsUI.c 
+	$(CC) -c -o $@ -DMAINTAINMENT $(CFLAGS) $^
 
-devToolsUI_dev.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
-	$(CC) -c -o $@ -DDEVELOPMENT $(CFLAGS) $<
+devToolsUI_dev.o: devToolsUI.c 
+	$(CC) -c -o $@ -DDEVELOPMENT $(CFLAGS) $^
 
-devToolsUI_product.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
-	$(CC) -c -o $@ -DPRODUCTION $(CFLAGS) $<
+devToolsUI_product.o: devToolsUI.c 
+	$(CC) -c -o $@ -DPRODUCTION $(CFLAGS) $^
 
-devToolsUI_limited.o: devToolsUI.c ./$(LIB)/include/devToolsUI_private.h
-	$(CC) -c -o $@ -DDEVELOPMENT -DLIMITED $(CFLAGS) $<
+devToolsUI_limited.o: devToolsUI.c 
+	$(CC) -c -o $@ -DDEVELOPMENT -DLIMITED $(CFLAGS) $^
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

@@ -450,7 +450,7 @@ static inline void CreatePartitionList(void)
 		hwndPage,NULL,
 		hInst,NULL);
 		#ifdef LIMITED
-		if(i != 0 && i != 1 && i != 3)
+		if(i != PARTITION_IS_MINISYS -1 && i != PARTITION_IS_IPL - 1  && i != PARTITION_IS_CALIBRATION - 1 )
 			SendMessage(hwndPartitionCheckBox[i],BM_CLICK,0,0);
 		EnableWindow(hwndPartitionCheckBox[i],FALSE);
 		#endif
@@ -491,7 +491,7 @@ static BOOL process_partitionlist(HWND hwnd)
 	{
 		if(hwnd == hwndPartitionCheckBox[i])
 		{
-			if(i == 2 && Button_GetCheck(hwndPartitionCheckBox[i]) == BST_UNCHECKED)//calibration
+			if(i == PARTITION_IS_CALIBRATION - 1 && Button_GetCheck(hwndPartitionCheckBox[i]) == BST_UNCHECKED)//calibration
 			{
 				if(IDYES == MessageBox(hwndMain,TEXT("WARNING:This partition should never been checked unless you exectly known what it is repesent for.\nCheck it anyway?"),szAppName,MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2))
 				{

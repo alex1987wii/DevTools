@@ -2450,6 +2450,7 @@ static int linux_init(const char *ip)
 	{		
 		snprintf(error_info,ERROR_INFO_MAX,"image not exsit");
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
+		error_code = EC_INI_IMAGE_NOT_EXSIT;
 		return -1;
 	}	
 	/*make WinUpgradeLibInit run in backgroud_func*/
@@ -2501,6 +2502,7 @@ static int linux_download(void)
 		if(retval == 1)//Waiting for linux device insert
 		{
 			listening_on = IS_LISTENING_ON_LINUX;
+			ResetEvent(g_lan_event);
 			SetDynamicInfo("Waiting for reboot");
 			if(WAIT_TIMEOUT == WaitForSingleObject(g_lan_event,10000))
 			{
@@ -2511,7 +2513,6 @@ static int linux_download(void)
 				error_code = EC_WAIT_REBOOT_TIMEOUT;
 				goto linux_download_error;
 			}			
-			ResetEvent(g_lan_event);
 			Sleep(10000);//wait for device reboot
 			StopDynamicInfo();
 			listening_on = IS_LISTENING_ON_NOTHING;
@@ -2584,6 +2585,7 @@ static BOOL spl_init(void)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
+		error_code = EC_INI_RESCUE_IMAGE_NOT_EXSIT;
 		return FALSE;
 	}
 	return TRUE;
@@ -2646,6 +2648,7 @@ static BOOL mfg_init(void)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
+		error_code = EC_INI_IMAGE_NOT_EXSIT;
 		return FALSE;
 	}
 	dump_time();

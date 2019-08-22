@@ -22,6 +22,7 @@
 #include "utils.h"
 #include "error_code.h"
 #include "UpgradeLib.h"
+#include "win.h"
 
 #define UNI_APP_MUTEX      "Unication Dev Tools"
 

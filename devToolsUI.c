@@ -232,59 +232,32 @@ static HWND    hwndInfo,hwndIpInfo,hwndProcessInfo,hwndStaticBrowser,hwndBtnBrow
 static TCHAR	BrowserImage[256];
 
 /**********************Linux Handler Declaration*************************/
-static HWND    hwndLinPage;
-static HWND    hwndLinGroupReadme;
-static HWND    hwndLinTextTarget,hwndLinStaticInfo,hwndLinStaticIpInfo,hwndLinProcessInfo,hwndLinStaticNotice;
-
-static HWND    hwndLinStaticIP, hwndLinStaticIPMask, hwndLinStaticHost;
-static HWND    hwndLinCommIP, hwndLinComboHost;
-static HWND    hwndLinStaticDev,hwndLinComboDevList,hwndLinBtnRefresh,hwndLinBtnReset;/*for Br01*/
-static HWND    hwndLinGroupOptions;
-
-static HWND    hwndLinStaticImg;
-static HWND    hwndLinStaticBrowser;
-
-static HWND    hwndLinBtnBrowser,hwndLinBtnDown;
-static HWND    hwndCheckBoxUserdata,hwndCheckBoxSkipBatCheck;
 
 
 /**********************SPL Handler Declaration*************************/
-static HWND    hwndSPLPage;
-static HWND    hwndSPLGroupReadme;
-static HWND    hwndSPLTextTarget,hwndSPLStaticInfo,hwndSPLStaticIpInfo,hwndSPLProcessInfo,hwndSPLStaticNotice;
-
-//static HWND    hwndSPLIpAddr,hwndSPLDevList,hwndSPLBtnRefresh;/*for Br01*/
-static HWND    hwndSPLGroupOptions;
-static HWND    hwndSPLStaticImg;
-static HWND    hwndSPLStaticBrowser;
-static HWND    hwndSPLBtnBrowser,hwndSPLBtnDown,hwndSPLBtnStop;
-//static HWND    hwndCheckBoxSkipBatCheck;
 
 /**********************MFG Handler Declaration*************************/
 
-static HWND    hwndMFGPage;
-static HWND    hwndMFGGroupReadme;
-static HWND    hwndMFGTextTarget,hwndMFGStaticInfo,hwndMFGStaticIpInfo,hwndMFGProcessInfo,hwndMFGStaticNotice;
-static HWND    hwndMFGStaticIP;
-static HWND    hwndMFGCommIP;
-//static HWND    hwndMFGIpAddr,hwndMFGDevList,hwndMFGBtnRefresh;/*for Br01*/
-static HWND    hwndMFGGroupOptions;
-
-static HWND    hwndMFGStaticImg;
-static HWND    hwndMFGStaticBrowser;
-static HWND    hwndMFGBtnBrowser,hwndMFGBtnDown,hwndMFGBtnStop;
-static HWND    hwndCheckBoxBatch;
-
-/**********************Utils Handler Declaration*************************/
-static HWND    hwndUtilsPage, hwndGroupChangeIP, hwndGroupDspImage, hwndUtilsInfo;
-static HWND    hwndStaticDeviceIP, hwndUtilsStaticHost, hwndStaticChangto, hwndStaticDspImage, hwndUtilsStaticChangeToMask;
-HWND    hwndUtilsIpAddrDeviceIP, hwndUtilsComboHost, hwndUtilsIpAddrChangeto, hwndEditDspImage, hwndUtilsComboHost;
-static HWND	   hwndBtnChange, hwndBtnDspImageBrowser, hwndBtnDspDownload;
-static HWND    hwndBtnReboot, hwndBtnEnableTelnet;
-static HWND	   hwndBtnGroupExtra, hwndStaticExtraTool, hwndComboExtraToolList, hwndBtnExtraExcute;
 /* Popup window handle definitions */
 static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
 
+struct win_struct win_root = {
+	.parent = NULL,
+	.hwnd = NULL,
+	.lpClassName = szAppName,
+	.lpWindowName = NULL,//initialize later
+	.dwExStyle = 0,
+	.dwStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPSIBLINGS,
+	.position = {
+		.reference = NULL,
+		.x = 0,//initialize later
+		.y = 0,//initialize later
+		.nWidth = DEV_TOOLS_WIDTH,
+		.nHeight = DEV_TOOLS_HEIGHT,
+	},
+	.nchild = ARRAY_SIZE(win_tab),
+	.childs = win_tab,
+};
 
 #include "debug_log.h"
 /*  ===========================================================================

@@ -79,6 +79,15 @@
 #define DEV_TOOLS_NUMBER        1           /* Unication dev tools have only one utilities */
 #endif
 
+/* Unication UniDevTools lines buffer definitions */
+#if defined DEVELOPMENT
+PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", "For SPL"," For MFG "};
+#elif defined MAINTAINMENT
+PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Upgrade"};
+#elif defined PRODUCTION
+PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
+#endif
+
 /*********************Tab Select ID****************************/
 #define SELECT_LINUX_PROGRAMMING		0
 #define SELECT_SPL_PROGRAMMING			1 //unused
@@ -132,11 +141,6 @@ static const int burn_mode = SELECT_MFG_PROGRAMMING;
 #define PROGRESS_STATUS_TRANSFER	  (5)
 #define MAX_STATUS					(6)
 
-#define MAGIC_VALUE             (0xdeaddead)
-#define IS_IDEL                 (0)
-#define IS_DOWNLOADING          (1)
-#define IS_UPLOADING            (2)
-
 
 /*info*/
 #define LINUX_INIT			"Preparing"
@@ -149,15 +153,6 @@ static HWND hwndPartitionCheckBox[UNI_MAX_PARTITION] = {NULL,};
 int partition_x_pos = 0;
 int partition_y_pos = 0;
 
-
-/* Unication UniDevTools lines buffer definitions */
-#if defined DEVELOPMENT
-PTCHAR tabString[DEV_TOOLS_NUMBER] = {"For LINUX ", "For SPL"," For MFG "};
-#elif defined MAINTAINMENT
-PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Upgrade"};
-#elif defined PRODUCTION
-PTCHAR tabString[DEV_TOOLS_NUMBER] = {"Nand Flash programming"};
-#endif
 
 #define TARGET_DSP_IMAGE		"/root/dsp_image.bin"
 
@@ -183,8 +178,10 @@ static int listening_on = IS_LISTENING_ON_NOTHING;
 static char work_path[MAX_PATH];/*the path for this program*/
 
 
-static HANDLE g_event = NULL;    // event
-static HANDLE g_lan_event = NULL;
+static HANDLE g_event = NULL;    // background thread event
+static HANDLE g_lan_event = NULL;	//linux event
+static HANDLE g_spl_event = NULL;	//spl event
+static HANDLE g_mfg_event = NULL;	// mfg event
 static HANDLE g_hBackGround = NULL;
 static HANDLE g_hTransfer = NULL;
 
@@ -2271,9 +2268,8 @@ spl_download_error:
 
 static int mfg_download(void)
 {	
-	int retval = -1;
-	dump_time();
-	log_print("mfg_download() called.\n");
+	int retval = -1;	
+	log_print("mfg_download called.");
 	
 	SetWindowText(hwndInfo,"Waiting for MFG download..");
 	dump_time();
@@ -2633,10 +2629,8 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 	if(process_partitionlist(hwnd))
 		return TRUE;
 	if(hwnd == hwndMFGBtnDown)
-	{
-		log_print("\n");
-		dump_time();
-		log_print("button MFGBtnDown clicked.\n");
+	{		
+		log_info("button MFGBtnDown clicked.");
 		CLEAR_INFO();
 #ifdef DEVELOPMENT
 		int i;		
@@ -2647,7 +2641,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		}
 		if(partition_selected == 0)
 		{
-			log_print("No partition select.\n");
+			log_info("No partition select.");
 			ERROR_MESSAGE("No partition select.");
 			return TRUE;
 		}
@@ -2666,30 +2660,30 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		}
 		else
 			g_on_batch = FALSE;
-		listening_on = IS_LISTENING_ON_MFG;
+		
 		SetDynamicInfo("Waiting for MFG device");
 		dump_download_varibles();
-		log_print("Waiting for MFG device..\n");
+		log_info("Waiting for MFG device..");
+		ResetEvent(g_mfg_event);
+		g_background_func = mfg_download;
+		g_complete_func = mfg_download_complete_cb;
+		WAKE_THREAD_UP();
 		
-#ifdef PRODUCTION		
+#ifdef PRODUCTION
 		ShowWindow(hwndMFGBtnDown,FALSE);		
 		EnableWindow(hwndMFGBtnStop,TRUE);
 		ShowWindow(hwndMFGBtnStop,TRUE);		
 #endif		
 	}
 	else if(hwnd == hwndMFGBtnBrowser)
-	{
-		log_print("\n");
-		dump_time();
-		log_print("button MFGBtnBrowser clicked.\n");
+	{		
+		log_print("button MFGBtnBrowser clicked.");
 		CLEAR_INFO();
 		return OnBtnBrowser();
 	}
 	else if(hwnd == hwndMFGBtnStop)
-	{
-		log_print("\n");
-		dump_time();
-		log_print("button MFGBtnStop clicked.\n");			
+	{		
+		log_print("button MFGBtnStop clicked.");			
 		if(g_processing == FALSE)
 		{
 			update_ui_resources(TRUE);
@@ -2844,56 +2838,32 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			((PDEV_BROADCAST_HDR)lParam)->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
 			{
 				GUID insert_dev = ((PDEV_BROADCAST_DEVICEINTERFACE)lParam)->dbcc_classguid;
-				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
-				listening_on == IS_LISTENING_ON_SPL )
-				{
-					//spl device insert			
-					StopDynamicInfo();
-					listening_on = IS_LISTENING_ON_NOTHING;
-					g_background_func = spl_download;
-					g_complete_func = spl_download_complete_cb;
-					g_processing = TRUE;					
-					dump_time();
-					log_print("SPL device inserted.\n");
-					WAKE_THREAD_UP();
-					
+				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)))
+				{					
+					log_info("SPL device inserted.");
+					SetEvent(g_spl_event);				
 				}
-				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)) &&
-				listening_on == IS_LISTENING_ON_MFG)
+				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)))				
 				{
-					//mfg device insert
-					StopDynamicInfo();
-					listening_on = IS_LISTENING_ON_NOTHING;
-					g_background_func = mfg_download;
-					g_complete_func = mfg_download_complete_cb;
-					g_processing = TRUE;
-					if(g_on_batch == FALSE)
-					{
-						ShowWindow(hwndMFGBtnDown,TRUE);
-						ShowWindow(hwndMFGBtnStop,FALSE);
-					}
-					dump_time();
-					log_print("mfg device inserted.\n");
-					WAKE_THREAD_UP();					
+					log_info("MFG device inserted.");
+					SetEvent(g_mfg_event);					
 				}
-				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)) &&
-				listening_on == IS_LISTENING_ON_LINUX)
+				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_LAN,sizeof(GUID)))
 				{
-					//lan device insert					
-					dump_time();
-					log_print("linux device inserted.\n");					
+					//lan device insert						
+					log_info("linux device inserted.");					
 					SetEvent(g_lan_event);
 				}
 			}				
 		}
 		break;
 		case WM_CREATE_PARTITION_LIST:
-		log_print("create partition list.\n");
+		log_info("create partition list.\n");
 		CreatePartitionList();
 		
 		break;
 		case WM_DESTROY_PARTITION_LIST:
-		log_print("destory partition list.\n");
+		log_info("destory partition list.\n");
 		DestoryPartitionList();
 		break;
 		case WM_CREATE_PROGRESS_BAR:
@@ -2903,8 +2873,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		DestoryProgressBar();
 		break;
 		
-		case WM_ERROR:
-		dump_time();
+		case WM_ERROR:		
 #if 0
 		if(wParam != -1)//appending error code string
 		{
@@ -2928,9 +2897,9 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			error_code = wParam;		
 		snprintf(error_info,ERROR_INFO_MAX,"%s(0x%04X)",get_error_info(error_code),error_code);
 		strncpy(error_msg,get_short_info(error_code),ERROR_INFO_MAX);
-		log_print("Error : error code is 0x%04X.\n",error_code);
-		log_print("error_info : %s\n",error_info);
-		log_print("error_msg  : %s\n",error_msg);
+		log_info("Error : error code is 0x%04X.",error_code);
+		log_info("error_info : %s",error_info);
+		log_info("error_msg  : %s",error_msg);
 		SetWindowText(hwndInfo,error_info);
 		ERROR_MESSAGE(error_msg);		
 #endif//DEVELOPMENT
@@ -3013,6 +2982,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	open_debug_log();
     g_event = CreateEvent(NULL, TRUE, FALSE, NULL); // ManualReset
 	g_lan_event = CreateEvent(NULL,TRUE,FALSE,NULL);
+	g_spl_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+	g_mfg_event = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (StartThread() == FALSE)
     {
         MessageBox(NULL, TEXT ("Create thread error"), szAppName, MB_ICONERROR);
@@ -3050,8 +3021,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	InitMFGWindow();
 	reset_general_handler(SELECT_MFG_PROGRAMMING);
 #endif
-
-	dump_time();
+	
 	dump_project();
 	
     register_notifyer();
@@ -3078,7 +3048,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     }	
 	unregister_notifyer();
 	
-    CloseHandle(g_event);   
+    CloseHandle(g_event);
+	CloseHandle(g_lan_event);
+	CloseHandle(g_spl_event);
+	CloseHandle(g_mfg_event);   
 
     /* Receive the WM_QUIT message, release mutex and return the exit code to the system */
     CloseHandle(hMutex);

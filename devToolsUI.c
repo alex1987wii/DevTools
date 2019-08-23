@@ -2527,8 +2527,8 @@ static int linux_download(void)
 		if(Button_GetCheck(hwndCheckBoxUserdata) == BST_UNCHECKED)
 		{
 
-			log_print("burnpartition() : partition_selected = 0x%04x\n",((1<<total_partition)-1)&~0x000B);
-			retval = burnpartition(((1<<total_partition)-1)&~0x000B);
+			log_print("burnpartition() : partition_selected = 0x%04x\n",partition_selected);
+			retval = burnpartition(partition_selected);
 		}
 		else
 		{
@@ -2956,7 +2956,9 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		log_print("button LinBtnDown clicked.\n");
 		CLEAR_INFO();
 
-#ifndef MAINTAINMENT
+#ifdef MAINTAINMENT
+		partition_selected = ((1<<total_partition)-1)&~0x000B;//every partition except ipl spl calibration
+#else
 		int i;
 		partition_selected = 0;
 		for(i = 0; i < total_partition;++i)

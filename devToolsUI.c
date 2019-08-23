@@ -2792,7 +2792,7 @@ static BOOL OnBtnBrowser(void)
 			SendMessage(hwndMain,WM_DESTROY_PARTITION_LIST,0,0);			
 #endif
 			EnableWindow(hwndBtnDown,FALSE);
-			SendMessage(hwndMain,WM_ERROR,-1,0);
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
 		}
 		else
 		{
@@ -2973,7 +2973,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 #endif
 		if(check_ini() == FALSE)
 		{
-			SendMessage(hwndMain,WM_ERROR,-1,0);
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
 			return TRUE;
 		}
 		g_background_func = linux_download;
@@ -3034,7 +3034,7 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 		}
 		if(check_ini() == FALSE)
 		{
-			SendMessage(hwndMain,WM_ERROR,-1,0);
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
 			return TRUE;
 		}		
 		g_background_func = spl_download;
@@ -3088,7 +3088,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 #endif
 		if(check_ini() == FALSE)
 		{
-			SendMessage(hwndMain,WM_ERROR,-1,0);
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
 			return TRUE;
 		}
 		update_ui_resources(FALSE);
@@ -3354,8 +3354,13 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		error_msg[0] = 0;
 #else		
 		/*not use error_info and error_msg buffer any more,just use error_code(for UI),wParam(for lib) and error code table to display error message*/
-		if(error_code == OK && wParam != -1)
-			error_code = wParam;		
+		error_code = wParam;		
+#define back_trace()	//not implement yet just ignore it
+		if(error_code == 0 || error_code == -1)
+		{
+			back_trace();
+		}
+#undef back_trace()
 		snprintf(error_info,ERROR_INFO_MAX,"%s(0x%04X)",get_error_info(error_code),error_code);
 		strncpy(error_msg,get_short_info(error_code),ERROR_INFO_MAX);
 		log_print("Error : error code is 0x%04X.\n",error_code);

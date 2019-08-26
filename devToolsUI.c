@@ -2451,7 +2451,7 @@ static int linux_init(const char *ip)
 		snprintf(error_info,ERROR_INFO_MAX,"image not exsit");
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		error_code = EC_INI_IMAGE_NOT_EXSIT;
-		return -1;
+		return error_code;
 	}	
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
@@ -2504,15 +2504,7 @@ static int linux_download(void)
 			listening_on = IS_LISTENING_ON_LINUX;
 			ResetEvent(g_lan_event);
 			SetDynamicInfo("Waiting for reboot");
-			if(WAIT_TIMEOUT == WaitForSingleObject(g_lan_event,10000))
-			{
-				StopDynamicInfo();
-				listening_on = IS_LISTENING_ON_NOTHING;
-				snprintf(error_info,ERROR_INFO_MAX,"Waiting for reboot timeout.");
-				snprintf(error_msg,ERROR_INFO_MAX,"Waiting for reboot timeout.");
-				error_code = EC_WAIT_REBOOT_TIMEOUT;
-				goto linux_download_error;
-			}			
+			WaitForSingleObject(g_lan_event,15000);	
 			Sleep(10000);//wait for device reboot
 			StopDynamicInfo();
 			listening_on = IS_LISTENING_ON_NOTHING;
@@ -2578,7 +2570,7 @@ linux_download_error:
 	return retval;
 }
 
-static BOOL spl_init(void)
+static int spl_init(void)
 {	
 	image_length = get_file_len(ini_file_info.name_of_rescue_image);
 	if(image_length <= 0)
@@ -2586,9 +2578,9 @@ static BOOL spl_init(void)
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
 		error_code = EC_INI_RESCUE_IMAGE_NOT_EXSIT;
-		return FALSE;
+		return error_code;
 	}
-	return TRUE;
+	return 0;
 }
 static int spl_download(void)
 {
@@ -2597,9 +2589,9 @@ static int spl_download(void)
 	log_print("spl_download() called.\n");
 	
 	SetDynamicInfo("SPL init");
-	BOOL ret = spl_init();
+	retval= spl_init();
 	StopDynamicInfo();
-	if(FALSE == ret)
+	if(retval)
 	{
 		goto spl_download_error;
 	}
@@ -2636,7 +2628,7 @@ static int spl_download(void)
 spl_download_error:	
 	return retval;
 }
-static BOOL mfg_init(void)
+static int mfg_init(void)
 {
 	int retval = -1;
 	char image[256];	
@@ -2649,7 +2641,7 @@ static BOOL mfg_init(void)
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		error_code = EC_INI_IMAGE_NOT_EXSIT;
-		return FALSE;
+		return error_code;
 	}
 	dump_time();
 	log_print("burnMFGinit() : image = %s\n",image);
@@ -2660,9 +2652,9 @@ static BOOL mfg_init(void)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"MFG init error");
 		snprintf(error_msg,ERROR_INFO_MAX,"MFG init error,Error code is %s.",get_error_info(retval));
-		return FALSE;
+		//return retval;
 	}
-	return TRUE;
+	return retval;
 }
 static int mfg_download(void)
 {	
@@ -2671,9 +2663,9 @@ static int mfg_download(void)
 	log_print("mfg_download() called.\n");
 
 	SetDynamicInfo("MFG init");
-	BOOL ret = mfg_init();
+	retval = mfg_init();
 	StopDynamicInfo();
-	if(FALSE == ret)
+	if(retval)
 	{			
 		goto mfg_download_error;
 	}

@@ -42,7 +42,7 @@ struct _error_code_info
 {
 	{0xFDFF, "Please check image again.","Please check image again."},// For U3 Only
     {0xFDFE, "Please init first","Please init first"}, // For U3 Only
-    {0xFC18, "There is a problem with this update package. A image/DLL required for this update could not be run. Please verify the update package and try again, or contact your support personnel for assistance..","Tool package broken."},                    // FC18    
+    {0xFC18, "Please make sure the target configurated with Bandtype and Model number.","Bandtype or Model number error."},                    // FC18    
 
     {0xFC1C, "There is a problem with this update package. The installer may not match your target. Please verify the installer and try again.","Tool package error."}, // FC1C  
     {0xFC1D, "There is a problem with this update package. The installer may not match your target. Please verify the installer and try again.","Tool package error."},                 // FC1D   

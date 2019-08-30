@@ -1,3 +1,9 @@
+/*
+    This file claim API from upgrade tools PC library for U3 series products.
+    UPGRADE_LIB_VERSION 004
+    Joyce 2019/8/29
+*/
+
 #ifndef _UPGRADE_LIB_H_
 #define _UPGRADE_LIB_H_
 #ifdef __cplusplus
@@ -19,7 +25,12 @@ int burnMFG();
 
 int burnSPL( char *rescue_image_name );
 
-int WinUpgradeLibInit(char *nand_image_name, unsigned long ImageLen, const char *TG_ip, unsigned char reserve);
+/* Function: init operation and config for linux burning. 
+ * Parameters check_tg_or_not_flag:
+ *		0. check target before linux update
+ *		0x1. skip target db check before linux update
+ */
+int WinUpgradeLibInit(char *nand_image_name, unsigned long ImageLen, const char *TG_ip, unsigned char check_tg_or_not_flag);
 int burnImage();
 int burnpartition(int parts_selected);
 
@@ -32,7 +43,7 @@ int file_upload(const char *TG_ip, char *write_file_to_pc, char *read_file_from_
 int file_download(const char *TG_ip, char *read_file_from_pc, const char *save_file_to_target);
 int exec_file_in_tg(const char *TG_ip, const char *special_file);
 
-/* execute shell command in target. please DO NOT contain special character as /0 in the middle of command*/
+/*beta*/
 int execute_cmd_in_tg(const char *TG_ip, char *cmd);
 #ifdef __cplusplus
 }

@@ -2456,8 +2456,12 @@ static int linux_init(const char *ip)
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
 	int battery_check_sign = 0;
+	#if defined(U3_LIB) && defined(PRODUCTION)
+	battery_check_sign = 1; //skip model number and bandtype check
+	#else
 	if(burn_mode == SELECT_LINUX_PROGRAMMING)
 		battery_check_sign = Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1;
+	#endif
 	dump_time();
 	log_print("WinUpgradeLibInit() : image = %s,image_length = %d,ip = %s,battery_check_sign = %d.\n",
 		image,image_length,ip,battery_check_sign);

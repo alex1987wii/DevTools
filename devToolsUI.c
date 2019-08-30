@@ -355,6 +355,7 @@ static char work_path[MAX_PATH];/*the path for this program*/
 
 static HANDLE g_event = NULL;    // event
 static HANDLE g_lan_event = NULL;
+static HANDLE g_spl_event = NULL;
 static HANDLE g_hBackGround = NULL;
 static HANDLE g_hTransfer = NULL;
 
@@ -2456,11 +2457,13 @@ static int linux_init(const char *ip)
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
 	int battery_check_sign = 0;
-	#if defined(U3_LIB) && defined(PRODUCTION)
-	battery_check_sign = 1; //skip model number and bandtype check
-	#else
+	#ifndef U3_LIB
 	if(burn_mode == SELECT_LINUX_PROGRAMMING)
 		battery_check_sign = Button_GetCheck(hwndCheckBoxSkipBatCheck) == BST_CHECKED ? 0 : 1;
+	#elif defined(PRODUCTION)
+	battery_check_sign = 1; //skip model number and bandtype check if it's U3 serial and PRODUCTION for tool
+	#else
+	battery_check_sign = 0;
 	#endif
 	dump_time();
 	log_print("WinUpgradeLibInit() : image = %s,image_length = %d,ip = %s,battery_check_sign = %d.\n",
@@ -2622,7 +2625,11 @@ static int spl_download(void)
 	/*waiting for Linux device*/
 	
 	SetDynamicInfo("Waiting for linux device");
-	Sleep(2000);
+	listening_on = IS_LISTENING_ON_LINUX;
+	ResetEvent(g_lan_event);
+	WaitForSingleObject(g_lan_event, 15000);
+	listening_on = IS_LISTENING_ON_NOTHING;
+	Sleep(5000);
 	StopDynamicInfo();
 	
 	retval = linux_download();	
@@ -2689,7 +2696,13 @@ static int mfg_download(void)
 	}
 		
 	SetDynamicInfo("Waiting for SPL device");
-	Sleep(2000);	
+	
+	listening_on = IS_LISTENING_ON_SPL;
+	ResetEvent(g_spl_event);
+	WaitForSingleObject(g_spl_event, 8000);
+	listening_on = IS_LISTENING_ON_NOTHING;
+	
+	Sleep(2000);
 	StopDynamicInfo();
 	
 	SetWindowText(hwndInfo,"Waiting for SPL download..");	
@@ -3273,21 +3286,15 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			{
 				GUID insert_dev = ((PDEV_BROADCAST_DEVICEINTERFACE)lParam)->dbcc_classguid;
 				if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_SPL,sizeof(GUID)) &&
-				listening_on == IS_LISTENING_ON_SPL )
+					listening_on == IS_LISTENING_ON_SPL )
 				{
-					//spl device insert			
-					StopDynamicInfo();
-					listening_on = IS_LISTENING_ON_NOTHING;
-					g_background_func = spl_download;
-					g_complete_func = spl_download_complete_cb;
-					g_processing = TRUE;					
+					//spl device insert
 					dump_time();
 					log_print("SPL device inserted.\n");
-					WAKE_THREAD_UP();
-					
+					SetEvent(g_spl_event);					
 				}
 				else if(!memcmp(&insert_dev,&GUID_DEVCLASS_AD6900_MFG,sizeof(GUID)) &&
-				listening_on == IS_LISTENING_ON_MFG)
+					listening_on == IS_LISTENING_ON_MFG)
 				{
 					//mfg device insert
 					StopDynamicInfo();
@@ -3358,7 +3365,7 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		{
 			back_trace();
 		}
-#undef back_trace()
+#undef back_trace
 		snprintf(error_info,ERROR_INFO_MAX,"%s(0x%04X)",get_error_info(error_code),error_code);
 		strncpy(error_msg,get_short_info(error_code),ERROR_INFO_MAX);
 		log_print("Error : error code is 0x%04X.\n",error_code);
@@ -3618,7 +3625,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     }
 	open_debug_log();
     g_event = CreateEvent(NULL, TRUE, FALSE, NULL); // ManualReset
-	g_lan_event = CreateEvent(NULL,TRUE,FALSE,NULL);
+	g_lan_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+	g_spl_event = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (StartThread() == FALSE)
     {
         MessageBox(NULL, TEXT ("Create thread error"), szAppName, MB_ICONERROR);
@@ -3684,7 +3692,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     }	
 	unregister_notifyer();
 	
-    CloseHandle(g_event);   
+    CloseHandle(g_event);
+	CloseHandle(g_lan_event);
+	CloseHandle(g_spl_event);
 
     /* Receive the WM_QUIT message, release mutex and return the exit code to the system */
     CloseHandle(hMutex);

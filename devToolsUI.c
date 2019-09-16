@@ -3638,7 +3638,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     /* Application init */
     if (InitApplication() == FALSE)
     {
-        MessageBox(NULL, TEXT (APP_TITLE" is running"), szAppName, MB_ICONERROR);
+        //MessageBox(NULL, TEXT (APP_TITLE" is running"), szAppName, MB_ICONERROR);
         ExitDebugConsole();
         return 0;
     }

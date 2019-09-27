@@ -2499,6 +2499,7 @@ static int linux_download(void)
 		}
 		log_print("ip = %s\n",ip);
 #endif
+start:
 		SetDynamicInfo(LINUX_INIT);
 		retval = linux_init(ip);
 		StopDynamicInfo();	
@@ -2525,7 +2526,6 @@ static int linux_download(void)
 		
 		if(Button_GetCheck(hwndCheckBoxUserdata) == BST_UNCHECKED)
 		{
-
 			log_print("burnpartition() : partition_selected = 0x%04x\n",partition_selected);
 			retval = burnpartition(partition_selected);
 		}
@@ -2554,12 +2554,17 @@ static int linux_download(void)
 			transfer_start();			
 		#ifdef U3_LIB
 			log_print("burnpartition() : partition_selected = 0x%04x.\n",1<<5);
-			retval = burnpartition(1<<5);//userdata
+			//retval = burnpartition(1<<5);//userdata
+			partition_selected = 1<<5;
 		#else
 			log_print("burnpartition() : partition_selected = 0x%04x.\n",0x03E0);
-			retval = burnpartition(0x03E0);
+			//retval = burnpartition(0x03E0);
+			partition_selected = 0x03E0;
 		#endif
-			transfer_complete();	
+			transfer_complete();
+			//need re-initialize
+			Button_SetCheck(hwndCheckBoxUserdata, BST_UNCHECKED);
+			goto start;			
 			
 		}
 		

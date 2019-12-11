@@ -1303,6 +1303,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 		//log_print("index = %d, percent = %d, status = %d\n",index,percent,status);
 		if(!(last_index == index && last_percent == percent && last_status == status))//stage index or percent changed
 		{
+			if(status >= MAX_STATUS) break;
 			#ifdef MAINTAINMENT
 			if(index == 255) //upgrade userdata
 			{

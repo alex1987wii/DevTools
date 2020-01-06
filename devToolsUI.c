@@ -2970,7 +2970,11 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		dump_time();
 		log_print("button LinBtnDown clicked.\n");
 		CLEAR_INFO();
-
+		if(check_ini() == FALSE)
+		{
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
+			return TRUE;
+		}
 #ifdef MAINTAINMENT
 		partition_selected = ((1<<total_partition)-1)&~0x000B;//every partition except ipl spl calibration
 #else
@@ -2988,11 +2992,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 			return TRUE;
 		}
 #endif
-		if(check_ini() == FALSE)
-		{
-			SendMessage(hwndMain,WM_ERROR,error_code,0);
-			return TRUE;
-		}
+		
 		g_background_func = linux_download;
 		g_complete_func = linux_download_complete_cb;		
 		g_processing = TRUE;
@@ -3038,6 +3038,13 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 		dump_time();
 		log_print("button SPLBtnDown clicked.\n");
 		CLEAR_INFO();
+		
+		if(check_ini() == FALSE)
+		{
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
+			return TRUE;
+		}		
+		
 		partition_selected = 0;
 		for(i = 0; i < total_partition;++i)
 		{
@@ -3049,11 +3056,7 @@ static BOOL ProcessSPLCommand(WPARAM wParam, LPARAM lParam)
 			//ERROR_MESSAGE("No partition select.");
 			return TRUE;
 		}
-		if(check_ini() == FALSE)
-		{
-			SendMessage(hwndMain,WM_ERROR,error_code,0);
-			return TRUE;
-		}		
+		
 		g_background_func = spl_download;
 		g_complete_func = spl_download_complete_cb;
 		g_processing = TRUE;
@@ -3087,6 +3090,12 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 		dump_time();
 		log_print("button MFGBtnDown clicked.\n");
 		CLEAR_INFO();
+		
+		if(check_ini() == FALSE)
+		{
+			SendMessage(hwndMain,WM_ERROR,error_code,0);
+			return TRUE;
+		}
 #ifdef DEVELOPMENT
 		int i;		
 		partition_selected = 0;
@@ -3103,11 +3112,7 @@ static BOOL ProcessMFGCommand(WPARAM wParam, LPARAM lParam)
 #elif defined PRODUCTION
 		partition_selected = ((1<<total_partition)-1);
 #endif
-		if(check_ini() == FALSE)
-		{
-			SendMessage(hwndMain,WM_ERROR,error_code,0);
-			return TRUE;
-		}
+		
 		update_ui_resources(FALSE);
 		if(CHECKBOX_IS_CLICK(hwndCheckBoxBatch))
 		{

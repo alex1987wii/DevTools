@@ -23,7 +23,7 @@
 
 # config varibles
 PROJECT=$(strip G4_BBA)
-VERSION=v02p01h
+VERSION=v00p01a
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
@@ -54,10 +54,12 @@ LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./
 TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED)
 TARGET_DEV = UniDevTools.exe
 TARGET_LIMITED = UniDevLimitedTools.exe
-TARGET_MAINTAIN = UniMaintainTools.exe
+TARGET_MAINTAIN = UniMaintainTools_encrypt.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
 WIN_UTIL_PATH=./output/$(PROJECT)
 UTILS=./$(LIB)/lib/libupgrade.dll
+
+OBJS= ./src/msn.o ./src/rc4.o
 
 DEPS = devToolsRes.h
 
@@ -70,6 +72,12 @@ all: clean ./lib/libiniparser.a $(TARGETS) install
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
 ./src/dictionary.o:./src/dictionary.c
 	$(CC) -c -o $@ $< $(CFLAGS) -ansi
+
+./src/rc4.o:./src/rc4.c ./include/rc4.h
+	$(CC) -c -o $@ $< $(CFLAGS)
+./src/msn.o:./src/msn.c ./include/rc4.h
+	$(CC) -c -o $@ $< $(CFLAGS)
+
 $(TARGET_MAINTAIN):resource_maintain.o devToolsUI_maintain.o $(OBJS)
 	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)
 

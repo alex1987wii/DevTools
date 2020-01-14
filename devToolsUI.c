@@ -95,6 +95,9 @@ static FILE *log_fp = NULL;
 #define console_print(fmt,args...)
 #endif
 
+#define log_error	log_print
+#define log_notice	log_print
+
 #define debug_positions(args1,args2)
 
 #else
@@ -222,6 +225,12 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 #endif
 
 
+#define TMP_DIR		"./tmp"
+#define TMP_IMG		"./tmp/tmp.img"
+#define MSN_CAL		"/usr/calibration/mfgcalibration/manufacturing/manufacturecal_msn.db"
+#define MSN_TMP_FILE	"./tmp/msn.tmp"
+#define MSN_DB		"msn.db"
+	
 /*UI error code definition */
 #define UI_ERROR_NUM_MAX	(100)
 #define UI_ERROR_START		(-1000 - UI_ERROR_NUM_MAX)
@@ -242,7 +251,10 @@ enum _UI_ERROR_CODE{
 	EC_INI_RESCUE_IMAGE_INVALID,
 	EC_INI_RESCUE_IMAGE_INCOMPATIBLE,
 	EC_NO_PARTITION_SELECTED,
-	EC_WAIT_REBOOT_TIMEOUT
+	EC_WAIT_REBOOT_TIMEOUT,
+	EC_CRC_ERROR,
+	EC_MSN_DB_LOST,
+	EC_MSN_NOT_MATCH,
 };
 
 struct _error_code_info ui_error_code_info[] = {
@@ -261,6 +273,9 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible.","Ini file error."},
 	{EC_NO_PARTITION_SELECTED,"Error! No partition selected.","Error! No partition selected."},
 	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
+	{EC_CRC_ERROR, "CRC check error", "CRC check error"},
+	{EC_MSN_DB_LOST, "MSN db file lost.", "MSN db file lost."},
+	{EC_MSN_NOT_MATCH, "MSN not match, please contact your vendor for help.", "MSN not match."},
 };
 /*info*/
 #define LINUX_INIT			"Preparing"
@@ -646,6 +661,112 @@ static inline void StopDynamicInfo()
 	SendMessage(hwndMain,WM_KILL_TIMER,TIMER_DYNAMIC_INFO,0);
 }
 
+static int read_msn_from_file(const char *filename, char *buf)
+{
+	#define MSN_MAX_LEN		16
+	FILE *fp = fopen(filename, "rb");
+	unsigned short gen_crc = 0;
+	if(fp == NULL) return -1;
+	fseek(fp, 5, SEEK_SET);
+	if(fread(buf, MSN_MAX_LEN, 1, fp) != 1) return -1;
+	log_notice("read msn from target : %s\n", buf);
+#if 0
+	if(fread(&gen_crc, sizeof(unsigned short), 1, fp) != 1) return -1;
+	if(gen_crc != crc16Gen(buf, MSN_MAX_LEN)) return EC_CRC_ERROR;
+#endif
+	fclose(fp);
+	return 0;	
+}
+/* return value : 0 -> OK
+ *				  1 -> not OK
+ *				 other -> error code
+ */
+static int verify_msn(const char *ip, const char *msn_db)
+{
+	int retval = -1;
+	unsigned char msn[20];
+	struct msn_node_t *msn_list;
+	/* get msn from target */		
+	if(retval = upload_file(ip, MSN_TMP_FILE, MSN_CAL))
+		return retval;
+	
+	if(retval = read_msn_from_file(MSN_TMP_FILE, msn))
+		return retval;
+	
+	if((msn_list = msn_open(msn_db)) == NULL) return EC_MSN_DB_LOST;
+	retval = msn_in_list(msn_list, msn) == 0 ? 1 : 0;	
+	msn_release(msn_list);
+	/* delete tmp msn file */
+	remove(MSN_TMP_FILE);	
+	return retval;
+}
+
+/*
+   Function: achieve decryption of nand image.
+           and saved in locol folder as decrypted_image_name
+   Return :
+           0  success
+           -1 fail on open file
+		   -2 fail on read nand image
+*/
+static int RC4_decrypt_image(const char *encrypted_image, const char *decrypted_image) //(char *encrypted_nand_img_name)
+{
+	#define data_size 1024
+	/* defination */
+	unsigned char key[5] = {0x01, 0x11, 0x1A, 0xAA, 0xA1};//Unication Image Key
+	FILE *org_fd = NULL, *dst_fd = NULL;
+	unsigned char in[data_size] = {0}, out[data_size] = {0};
+	int  retval = -1, rlen;
+
+	org_fd  = fopen(encrypted_image, "rb");
+	dst_fd  = fopen(decrypted_image, "wb");
+	if ((NULL == org_fd) || (NULL == dst_fd)) return (-1);
+
+	//************ENDOCING*********************
+	while (1)
+	{
+		rlen = fread(in, 1, data_size, org_fd);
+		if (rlen < 1) break;
+
+
+		RC4_single(key, 5, in, rlen, out);
+		fwrite(out, 1, rlen, dst_fd);
+		fflush(dst_fd);
+	}
+
+End:   
+	rewind(dst_fd);
+	fclose(org_fd);
+	fclose(dst_fd);
+	return retval;
+}
+static int pre_linux_download(const char *ip)
+{
+	int retval = -1;
+	if(_access(TMP_DIR, 0))
+		_mkdir(TMP_DIR);
+	
+	/* Verify MSN */	
+	SetDynamicInfo("Verify");
+	retval = verify_msn(ip, MSN_DB);
+	StopDynamicInfo();		
+	if(retval){
+		if(retval == 1){
+			log_error("MSN not match.\n");
+			retval = EC_MSN_NOT_MATCH;
+		}		
+		goto linux_download_error;
+	}	
+linux_download_error:
+	return retval;
+}
+
+static void post_linux_download(void)
+{
+	/* delete the unpacked image*/
+	remove(TMP_IMG);
+}
+
 static inline void CreatePartitionList(void)
 {
 	//create partition box
@@ -803,9 +924,15 @@ static inline void reset_ui_resources(int page)
 	}	
 }
 
-static BOOL get_image_info(const char*image)
+static BOOL get_image_info(const char*org_image)
 {
+	char image[MAX_PATH];
 	char image_type[UNI_MAX_REL_VERSION_LEN];
+	strncpy(image, TMP_IMG, MAX_PATH);
+	if(_access(TMP_DIR, 0))
+		_mkdir(TMP_DIR);
+	RC4_decrypt_image(org_image, image);
+	
 	FILE *fp = fopen(image,"rb");
 	if(fp == NULL)
 	{
@@ -1827,7 +1954,7 @@ static void InitLinuxWindow(void)
             hwndLinPage, NULL,
             hInst, NULL);
     relative_y += HEIGHT_CONTROL-5 + V_GAPS;
-	SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default checked
+	//SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default unchecked
 #endif
 #ifndef U3_LIB	
     console_print("hwndCheckBoxSkipBatCheck's dim: x=%d, y=%d, width=%d, height=%d\n",
@@ -2437,16 +2564,9 @@ static void PopProgressBar( void )
       
 }
 
-static int linux_init(const char *ip)
+static int linux_init(const char *ip, const char *image)
 {	
-	int retval = -1;
-	char image[256];
-#ifdef MAINTAINMENT	
-	strncpy(image,ini_file_info.name_of_image,256);
-#else
-	strncpy(image,BrowserImage,256);
-#endif
-	
+	int retval = -1;	
 	image_length = get_file_len(image);
 	if(image_length <= 0)
 	{		
@@ -2486,9 +2606,16 @@ static int linux_download(void)
 	const char *ip;
 	int i;
 	char ip_info[256];
+	char image[256];
 	dump_time();
 	log_print("linux_download() called.\n");
-	
+		
+#ifdef MAINTAINMENT
+	strncpy(image, TMP_IMG, 256);
+#else	
+	strncpy(image,BrowserImage,256);
+#endif
+
 	for(i = 0; i < ini_file_info.ip_should_flash; ++i)
 	{		
 		ip = ini_file_info.ip[i];
@@ -2500,9 +2627,17 @@ static int linux_download(void)
 		}
 		log_print("ip = %s\n",ip);
 #endif
+
+#ifdef MAINTAINMENT
+		retval = pre_linux_download(ip);
+		if(retval){
+			log_error("pre_linux_download error, error_code = %#x\n", retval);
+			goto linux_download_error;
+		}		
+#endif
 start:
 		SetDynamicInfo(LINUX_INIT);
-		retval = linux_init(ip);
+		retval = linux_init(ip, image);
 		StopDynamicInfo();	
 		if(retval < 0)
 		{			
@@ -2976,7 +3111,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 			return TRUE;
 		}
 #ifdef MAINTAINMENT
-		partition_selected = ((1<<total_partition)-1)&~0x000B;//every partition except ipl spl calibration
+		partition_selected = ((1<<total_partition)-1)&~0x0008;//every partition except calibration
 #else
 		int i;
 		partition_selected = 0;
@@ -3229,8 +3364,10 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		dot_count = 0;
 		break;
 		case WM_CLOSE:
-		if(g_processing == FALSE || IDYES == MessageBox(hwndMain,TEXT("Warning:This operation may cause download incomplete.\nAre you sure want to quit?"),szAppName,MB_ICONWARNING | MB_YESNO))
+		if(g_processing == FALSE || IDYES == MessageBox(hwndMain,TEXT("Warning:This operation may cause download incomplete.\nAre you sure want to quit?"),szAppName,MB_ICONWARNING | MB_YESNO)){
+			post_linux_download();
 			return DefWindowProc(hwnd, message, wParam, lParam);
+		}
 		break;
         case WM_NOTIFY: /* trigger by user click */
             switch(((LPNMHDR)lParam)->code)
@@ -3610,21 +3747,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         return 0 ;
     }
 	
-	/*check if ap's directory exsit*/
-
-#ifdef MAINTAINMENT
-	if(_access("DLL",0))
-	{
-		MessageBox(NULL,TEXT("Tool package broken,please re-install this tool."),szAppName,MB_ICONERROR);
-		return 0;
-	}
-/* 
-	if(_access("sys",0))
-	{
-		MessageBox(NULL,TEXT("sys lost"),szAppName,MB_ICONERROR);
-		return 0;
-	} */
-#endif
 	//Initialize net
 	WSADATA wsaData;
     int retval;

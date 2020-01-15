@@ -47,15 +47,16 @@ RC=windres
 
 # compile flag and link flag definitions
 
-CFLAGS  = -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(LIB)/include 
+CFLAGS  = -DNDEBUG -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WINDOW -DNT_WINDOW -O2 -I. -I./include -I./$(LIB)/include 
 LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./lib -liniparser
 
 # build target and dependency definitions
-TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED)
+TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED) $(TARGET_MSN_ENCRYPT)
 TARGET_DEV = UniDevTools.exe
 TARGET_LIMITED = UniDevLimitedTools.exe
 TARGET_MAINTAIN = UniMaintainTools_encrypt.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
+TARGET_MSN_ENCRYPT = UniMSNEncryptTool.exe
 WIN_UTIL_PATH=./output/$(PROJECT)
 UTILS=./$(LIB)/lib/libupgrade.dll
 
@@ -89,6 +90,9 @@ $(TARGET_PRODUCTION):resource_product.o devToolsUI_product.o $(OBJS)
 
 $(TARGET_LIMITED):resource_limited.o devToolsUI_limited.o $(OBJS)
 	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)   
+
+$(TARGET_MSN_ENCRYPT) : msn_encrypt.o $(OBJS)
+	$(CC) -o $@ $^ 
 
 # resourece object                          
 resource_maintain.o: devTools.rc devToolsRes.h
@@ -135,6 +139,7 @@ install:prepare_dir
 	cp -rf for_user_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(TARGET_MAINTAIN)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf $(TARGET_MSN_ENCRYPT)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf readme_for_production.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
 	cp -rf for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/

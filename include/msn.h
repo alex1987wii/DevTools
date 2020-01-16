@@ -19,8 +19,10 @@ enum {
 #define MAJOR_VER	0
 #define MINOR_VER	1
 #define MSN_MAGIC	"MSN"
-#define PROJECT		"g4_bba"
 
+#ifndef PROJECT
+#define PROJECT		"g4_bba"
+#endif
 struct msn_header_t{
 	char magic[4]; /* "MSN" */
 	short major_ver; /* 0 */

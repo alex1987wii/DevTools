@@ -64,7 +64,8 @@
 #include "devToolsRes.h"
 #include "iniparser.h"
 #include "devToolsUI_private.h"
-
+#include "msn.h"
+#include "rc4.h"
 /*  ===========================================================================
  *  Macro definitions
  *  ===========================================================================
@@ -224,9 +225,14 @@ MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 	#error "must pass the macro CONFIG_PROJECT_XXX to indicate which project it is"
 #endif
 
+#ifdef U3_LIB
+#define TOTAL_PARTITION		6
+#else
+#define TOTAL_PARTITION		10
+#endif
 
 #define TMP_DIR		"./tmp"
-#define TMP_IMG		"./tmp/tmp.img"
+#define TMP_IMG		"./tmp/tmp.cache"
 #define MSN_CAL		"/usr/calibration/mfgcalibration/manufacturing/manufacturecal_msn.db"
 #define MSN_TMP_FILE	"./tmp/msn.tmp"
 #define MSN_DB		"msn.db"
@@ -275,7 +281,7 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
 	{EC_CRC_ERROR, "CRC check error", "CRC check error"},
 	{EC_MSN_DB_LOST, "MSN db file lost.", "MSN db file lost."},
-	{EC_MSN_NOT_MATCH, "MSN not match, please contact your vendor for help.", "MSN not match."},
+	{EC_MSN_NOT_MATCH, "Serial number is not registered, please contact below email to verify your registered information on web, thanks.\r\nunication.cs@gmail.com", "Serial number is not registered."},
 };
 /*info*/
 #define LINUX_INIT			"Preparing"
@@ -484,6 +490,7 @@ static HWND hwndPop, hwndPopStatic, hwndPopPercent, hwndPopProgress;
  */
 
 LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+static BOOL get_image_info(const char*image);
 /*
  * return 1 check 0 not check
  */
@@ -747,17 +754,23 @@ static int pre_linux_download(const char *ip)
 		_mkdir(TMP_DIR);
 	
 	/* Verify MSN */	
-	SetDynamicInfo("Verify");
-	retval = verify_msn(ip, MSN_DB);
-	StopDynamicInfo();		
+	retval = verify_msn(ip, MSN_DB);			
 	if(retval){
 		if(retval == 1){
 			log_error("MSN not match.\n");
 			retval = EC_MSN_NOT_MATCH;
 		}		
-		goto linux_download_error;
-	}	
-linux_download_error:
+		goto verify_msn_error;
+	}
+	
+	RC4_decrypt_image(ini_file_info.name_of_image, TMP_IMG);
+	
+	if(get_image_info(TMP_IMG) == FALSE){
+		retval = error_code;
+		log_error("get_image_info error, encrypted_image = %s\n", ini_file_info.name_of_image);
+	}
+	
+verify_msn_error:	
 	return retval;
 }
 
@@ -924,15 +937,9 @@ static inline void reset_ui_resources(int page)
 	}	
 }
 
-static BOOL get_image_info(const char*org_image)
-{
-	char image[MAX_PATH];
-	char image_type[UNI_MAX_REL_VERSION_LEN];
-	strncpy(image, TMP_IMG, MAX_PATH);
-	if(_access(TMP_DIR, 0))
-		_mkdir(TMP_DIR);
-	RC4_decrypt_image(org_image, image);
-	
+static BOOL get_image_info(const char*image)
+{	
+	char image_type[UNI_MAX_REL_VERSION_LEN];	
 	FILE *fp = fopen(image,"rb");
 	if(fp == NULL)
 	{
@@ -977,6 +984,12 @@ static BOOL get_image_info(const char*org_image)
 		error_code = EC_INI_IMAGE_INVALID;
 		return FALSE;
 	}
+#ifdef MAINTAINMENT
+	if(total_partition != image_header.total_partitions){
+		error_code = EC_INI_IMAGE_INVALID;
+		return FALSE;
+	}
+#else
 	total_partition = image_header.total_partitions;
 	if(total_partition <= 0 || total_partition > UNI_MAX_PARTITION)
 	{
@@ -985,53 +998,19 @@ static BOOL get_image_info(const char*org_image)
 		error_code = EC_INI_IMAGE_INVALID;
 		return FALSE;
 	}
+#endif
+
 	int i;
 	for(i = 0; i < total_partition; ++i)
 	{		
 		memcpy(partition_name[i],image_header.partition[i].partition_name,UNI_MAX_PARTITION_NAME_LEN);
 	}
+#ifndef MAINTAINMENT
 	cbs_per_line = total_partition/2;
+#endif
 	return TRUE;
 }
 
-/*get src 's filename concatenate to dest
-* dest is linux filename，
-* src is windows filename
-*/
-static inline int get_abs_file_name(char *dest,const char *src)
-{
-	if(dest == NULL || src == NULL)
-		return FALSE;
-	char tmp_buf[MAX_PATH];
-	int i = 0;
-	dest += strlen(dest);
-	src += strlen(src);
-	while(*src != '\\')
-		tmp_buf[i++] = *src--;
-	--i;
-	if(*(dest-1) != '/')
-		*dest++ = '/';
-	
-	while(i >= 0)
-		*dest++ = tmp_buf[i--];
-	
-	return TRUE;
-}
-
-/*just replace all '\' to '/' */
-static inline char *dir_win32_to_linux(char *dir)
-{
-	static char linux_dir[256];
-	strncpy(linux_dir,dir,256);
-	dir = linux_dir;
-	while(*dir)
-	{
-		if(*dir == '\\')
-			*dir = '/';
-		++dir;
-	}
-	return linux_dir;	
-}
 static inline int get_file_len(const char *file)
 {
 	int retval = -1;
@@ -1186,10 +1165,9 @@ static BOOL check_ini(void)
 			error_code = EC_INI_IMAGE_NOT_EXSIT;
 			return FALSE;
 		}
-		if(get_image_info(ini_file_info.name_of_image) == FALSE)
-		{			
-			return FALSE;
-		}
+		total_partition = TOTAL_PARTITION;
+		cbs_per_line = total_partition / 2 ;
+		
 #endif
 		break;
 		case SELECT_SPL_PROGRAMMING:		
@@ -1453,7 +1431,7 @@ static DWORD WINAPI TransferThread(LPVOID lpParam)
 				processing_dynamic_info = FALSE;
 				StopDynamicInfo();				
 			}		
-			const char *partition = NULL;
+			const char *partition = NULL;			
 			if(index < total_partition)
 				partition = partition_name[index];
 			else if(index == 11)
@@ -2566,7 +2544,16 @@ static void PopProgressBar( void )
 
 static int linux_init(const char *ip, const char *image)
 {	
-	int retval = -1;	
+	int retval = -1;
+#ifdef MAINTAINMENT
+	retval = pre_linux_download(ip);
+	if(retval){
+		log_error("pre_linux_download error, error_code = %#x\n", retval);
+		return retval;
+	}
+	image = TMP_IMG;	
+#endif
+	
 	image_length = get_file_len(image);
 	if(image_length <= 0)
 	{		
@@ -2611,7 +2598,7 @@ static int linux_download(void)
 	log_print("linux_download() called.\n");
 		
 #ifdef MAINTAINMENT
-	strncpy(image, TMP_IMG, 256);
+	strncpy(image, ini_file_info.name_of_image, 256);
 #else	
 	strncpy(image,BrowserImage,256);
 #endif
@@ -2628,13 +2615,6 @@ static int linux_download(void)
 		log_print("ip = %s\n",ip);
 #endif
 
-#ifdef MAINTAINMENT
-		retval = pre_linux_download(ip);
-		if(retval){
-			log_error("pre_linux_download error, error_code = %#x\n", retval);
-			goto linux_download_error;
-		}		
-#endif
 start:
 		SetDynamicInfo(LINUX_INIT);
 		retval = linux_init(ip, image);
@@ -2861,6 +2841,9 @@ mfg_download_error:
 
 static void linux_download_complete_cb(int retval,void *private_data)
 {
+#ifdef MAINTAINMENT
+	post_linux_download();
+#endif
 	if(retval == 0)
 	{
 		dump_time();
@@ -3365,7 +3348,6 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 		break;
 		case WM_CLOSE:
 		if(g_processing == FALSE || IDYES == MessageBox(hwndMain,TEXT("Warning:This operation may cause download incomplete.\nAre you sure want to quit?"),szAppName,MB_ICONWARNING | MB_YESNO)){
-			post_linux_download();
 			return DefWindowProc(hwnd, message, wParam, lParam);
 		}
 		break;
@@ -3514,12 +3496,19 @@ LRESULT CALLBACK DevToolsWindowProcedure(HWND hwnd, UINT message, WPARAM wParam,
 			back_trace();
 		}
 #undef back_trace
-		snprintf(error_info,ERROR_INFO_MAX,"%s(0x%04X)",get_error_info(error_code),error_code);
+		
+		if(error_code == (unsigned short)EC_MSN_NOT_MATCH){			
+			snprintf(error_info,ERROR_INFO_MAX,"%s",get_error_info(error_code));
+		}
+		else{
+			snprintf(error_info,ERROR_INFO_MAX,"%s(0x%04X)",get_error_info(error_code),error_code);
+		}
 		strncpy(error_msg,get_short_info(error_code),ERROR_INFO_MAX);
 		log_print("Error : error code is 0x%04X.\n",error_code);
 		log_print("error_info : %s\n",error_info);
 		log_print("error_msg  : %s\n",error_msg);
 		SetWindowText(hwndInfo,error_info);
+		
 		ERROR_MESSAGE(error_msg);		
 #endif//DEVELOPMENT
 		error_code = OK;
@@ -3713,6 +3702,10 @@ static void InitFileTransferWindow(void)
     return;
 }
 
+void cleanup(void)
+{
+	remove(TMP_IMG);
+}
 /*
  *  Name:     WinMain
  *
@@ -3807,6 +3800,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     ShowWindow(hwndMain, iCmdShow);
     UpdateWindow(hwndMain);	
     /* Start the message loop */
+	atexit(cleanup);
     while ((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
     {
         if (bRet == -1)

@@ -280,7 +280,7 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_NO_PARTITION_SELECTED,"Error! No partition selected.","Error! No partition selected."},
 	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
 	{EC_CRC_ERROR, "CRC check error", "CRC check error"},
-	{EC_MSN_DB_LOST, "MSN db file lost.", "MSN db file lost."},
+	{EC_MSN_DB_LOST, "MSN db file error.", "MSN db file error."},
 	{EC_MSN_NOT_MATCH, "Serial number is not registered, please contact below email to verify your registered information on web, thanks.\r\nunication.cs@gmail.com", "Serial number is not registered."},
 };
 /*info*/
@@ -670,12 +670,11 @@ static inline void StopDynamicInfo()
 
 static int read_msn_from_file(const char *filename, char *buf)
 {
-	#define MSN_MAX_LEN		16
 	FILE *fp = fopen(filename, "rb");
 	unsigned short gen_crc = 0;
 	if(fp == NULL) return -1;
 	fseek(fp, 5, SEEK_SET);
-	if(fread(buf, MSN_MAX_LEN, 1, fp) != 1) return -1;
+	if(fread(buf, MSN_LEN, 1, fp) != 1) return -1;
 	log_notice("read msn from target : %s\n", buf);
 #if 0
 	if(fread(&gen_crc, sizeof(unsigned short), 1, fp) != 1) return -1;
@@ -697,6 +696,7 @@ static int verify_msn(const char *ip, const char *msn_db)
 	if(retval = upload_file(ip, MSN_TMP_FILE, MSN_CAL))
 		return retval;
 	
+	memset(msn, 0, 20);
 	if(retval = read_msn_from_file(MSN_TMP_FILE, msn))
 		return retval;
 	
@@ -753,7 +753,8 @@ static int pre_linux_download(const char *ip)
 	if(_access(TMP_DIR, 0))
 		_mkdir(TMP_DIR);
 	
-	/* Verify MSN */	
+	/* Verify MSN */
+	log_notice("verify msn, ip = %s\n", ip);
 	retval = verify_msn(ip, MSN_DB);			
 	if(retval){
 		if(retval == 1){
@@ -762,9 +763,10 @@ static int pre_linux_download(const char *ip)
 		}		
 		goto verify_msn_error;
 	}
-	
+	log_notice("RC4_decrypt_image, encrypted_image = %s, decrypted_image = %s\n", ini_file_info.name_of_image, TMP_IMG);
 	RC4_decrypt_image(ini_file_info.name_of_image, TMP_IMG);
 	
+	log_notice("get_image_info, image = %s\n", TMP_IMG);
 	if(get_image_info(TMP_IMG) == FALSE){
 		retval = error_code;
 		log_error("get_image_info error, encrypted_image = %s\n", ini_file_info.name_of_image);

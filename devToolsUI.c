@@ -271,8 +271,8 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_INI_IP_TOO_MANY,"Tool package broken,please re-install this tool.","Tool package broken."},
 	{EC_INI_IMAGE_NOT_SPECIFY,"Tool package broken,please re-install this tool.","Tool package broken."},
 	{EC_INI_IMAGE_NOT_EXSIT,"Can't find Image,please check if it's exsit.","Can't find Image."},
-	{EC_INI_IMAGE_INVALID,"Image broken,please use the right image.","Image broken."},
-	{EC_INI_IMAGE_INCOMPATIBLE,"Image incompatible,please use the right image for target.","Image incompatible."},
+	{EC_INI_IMAGE_INVALID,"Image file was incorrect. Please contact below email for help,Thanks.\r\nunication.cs@gmail.com","Image file was incorrect."},
+	{EC_INI_IMAGE_INCOMPATIBLE,"Image file was incorrect. Please contact below email for help,Thanks.\r\nunication.cs@gmail.com","Image file was incorrect."},
 	{EC_INI_RESCUE_IMAGE_NOT_SPECIFY,"Ini file error,rescue_image not specified.","Ini file error."},
 	{EC_INI_RESCUE_IMAGE_NOT_EXSIT,"Ini file error,rescue_image not exsit.","Ini file error."},
 	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid.","Ini file error."},
@@ -281,7 +281,7 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
 	{EC_CRC_ERROR, "CRC check error", "CRC check error"},
 	{EC_MSN_DB_LOST, "MSN db file error.", "MSN db file error."},
-	{EC_MSN_NOT_MATCH, "Serial number is not registered, please contact below email to verify your registered information on web, thanks.\r\nunication.cs@gmail.com", "Serial number is not registered."},
+	{EC_MSN_NOT_MATCH, "Series number is not registered, please contact below email to verify your registered information on web, thanks.\r\nunication.cs@gmail.com", "Series number is not registered."},
 };
 /*info*/
 #define LINUX_INIT			"Preparing"
@@ -1934,7 +1934,7 @@ static void InitLinuxWindow(void)
             hwndLinPage, NULL,
             hInst, NULL);
     relative_y += HEIGHT_CONTROL-5 + V_GAPS;
-	//SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default unchecked
+	SendMessage(hwndCheckBoxUserdata,BM_SETCHECK,BST_CHECKED,0);//default unchecked
 #endif
 #ifndef U3_LIB	
     console_print("hwndCheckBoxSkipBatCheck's dim: x=%d, y=%d, width=%d, height=%d\n",
@@ -3742,6 +3742,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         return 0 ;
     }
 	
+       /*check if ap's directory exsit*/
+
+#ifdef MAINTAINMENT
+  if(_access("DLL",0))
+   {
+		  MessageBox(NULL,TEXT("Tool package broken,please re-install this tool."),szAppName,MB_ICONERROR);
+		   return 0;
+   }
+/*
+   if(_access("sys",0))
+   {
+		   MessageBox(NULL,TEXT("sys lost"),szAppName,MB_ICONERROR);
+		   return 0;
+   } */
+#endif
+
 	//Initialize net
 	WSADATA wsaData;
     int retval;

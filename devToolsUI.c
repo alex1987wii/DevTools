@@ -2547,14 +2547,6 @@ static void PopProgressBar( void )
 static int linux_init(const char *ip, const char *image)
 {	
 	int retval = -1;
-#ifdef MAINTAINMENT
-	retval = pre_linux_download(ip);
-	if(retval){
-		log_error("pre_linux_download error, error_code = %#x\n", retval);
-		return retval;
-	}
-	image = TMP_IMG;	
-#endif
 	
 	image_length = get_file_len(image);
 	if(image_length <= 0)
@@ -2617,11 +2609,20 @@ static int linux_download(void)
 		log_print("ip = %s\n",ip);
 #endif
 
+#ifdef MAINTAINMENT
+	retval = pre_linux_download(ip);
+	if(retval){
+		log_error("pre_linux_download error, error_code = %#x\n", retval);
+		return retval;
+	}
+	strncpy(image,TMP_IMG,256);	
+#endif
+
 start:
 		SetDynamicInfo(LINUX_INIT);
 		retval = linux_init(ip, image);
 		StopDynamicInfo();	
-		if(retval < 0)
+		if(retval != 0 && retval != 1)
 		{			
 			goto linux_download_error;
 		}

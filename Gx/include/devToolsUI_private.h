@@ -106,7 +106,7 @@ struct _error_code_info
     {0xFDB8, "There is a problem with this update package. A image/DLL required for this update could not be run. Please verify the rescue image exist and try again.","Tool package broken."},                                          // FDB8
     {0xFDB9, "The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance.","Operation failed."},                                        // FDB9
     {0xFDBA, "The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance.","Operation failed."},                                                    // FDBA
-    {0xFDBB, "There is a problem with this update package. If your still want to update your target, it may wipe all personal data like records, images, all DB file etc. DO YOU WANT TO CONTINUE?","Userdata upgrade failed."},     // FDBB
+    {0xFDBB, "Userdata DB file error.","Userdata upgrade failed."},     // FDBB
     {0xFDBC, "There is a problem with this update package. The DLL folder required for this update may not be complete. Please verify the update package or contact your support personnel for assistance.","Tool package broken."},   	 // FDBC
 
     /* for USR tool }*/

@@ -51,14 +51,17 @@ CFLAGS  = -DNDEBUG -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WIN
 LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./lib -liniparser
 
 # build target and dependency definitions
-TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED) $(TARGET_MSN_ENCRYPT)
 TARGET_DEV = UniDevTools.exe
 TARGET_LIMITED = UniDevLimitedTools.exe
 TARGET_MAINTAIN = UniMaintainTools_encrypt.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
 TARGET_MSN_ENCRYPT = UniMSNEncryptTool.exe
+TARGET_MSN_LIB = libMSN.dll
+TARGET_MSN_INCLUDE = include/rc4.h include/msn.h
 WIN_UTIL_PATH=./output/$(PROJECT)
 UTILS=./$(LIB)/lib/libupgrade.dll
+
+TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED) $(TARGET_MSN_ENCRYPT) $(TARGET_MSN_LIB)
 
 OBJS= ./src/msn.o ./src/rc4.o
 
@@ -77,7 +80,7 @@ all: clean ./lib/libiniparser.a $(TARGETS) install
 ./src/rc4.o:./src/rc4.c ./include/rc4.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 ./src/msn.o:./src/msn.c ./include/rc4.h
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -c -o $@ $< $(CFLAGS) 
 
 $(TARGET_MAINTAIN):resource_maintain.o devToolsUI_maintain.o $(OBJS)
 	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)
@@ -93,6 +96,9 @@ $(TARGET_LIMITED):resource_limited.o devToolsUI_limited.o $(OBJS)
 
 $(TARGET_MSN_ENCRYPT) : msn_encrypt.o $(OBJS)
 	$(CC) -o $@ $^ 
+
+$(TARGET_MSN_LIB) : src/msn.o src/rc4.o
+	$(CC) -o $@ $^ --shared
 
 # resourece object                          
 resource_maintain.o: devTools.rc devToolsRes.h
@@ -129,6 +135,7 @@ prepare_dir:
 	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))
 	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))
 	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_LIMITED))
+	[ -d "$(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))" ] || mkdir $(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))
 
 install:prepare_dir
 	cp -rf readme_for_development.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_DEV))/readme.txt
@@ -140,6 +147,8 @@ install:prepare_dir
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(TARGET_MAINTAIN)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(TARGET_MSN_ENCRYPT)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
+	cp -rf $(TARGET_MSN_LIB) $(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))/
+	cp -rf $(TARGET_MSN_INCLUDE) $(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))/
 	cp -rf readme_for_production.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
 	cp -rf for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/

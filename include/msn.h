@@ -20,6 +20,8 @@ enum {
 #define MINOR_VER	1
 #define MSN_MAGIC	"MSN"
 
+#define DEFAULT_MSN_DB	"msn.db"
+
 #ifndef PROJECT
 #define PROJECT		"g4_bba"
 #endif
@@ -83,6 +85,13 @@ int msn_in_list(struct msn_node_t *msn_list, const char *msn);
  */
 void msn_release(struct msn_node_t *msn_list);
 
+/* create a MSN db file
+ * device_msn : MSN serial number
+ * filename : MSN db to be created
+ * return value : 0 -> success
+ * 		  other -> failed
+ */
+int create_msn_db(const char *device_msn, const char *filename);
 #ifdef __cplusplus
 }
 #endif

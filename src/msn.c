@@ -12,16 +12,21 @@ struct msn_node_t *RC4_encrypt_and_add_msn(struct msn_node_t **msn_list, const c
 {
 	struct msn_node_t *new_node;
 	unsigned int msn_len = strlen(msn);
-	if(msn_list == NULL || msn_len != MSN_LEN)
+	if(msn_list == NULL || msn_len != MSN_LEN){
+		if(msn_len != MSN_LEN)
+			DBG("Bad MSN serial number : %s\n", msn);
 		return NULL;
+	}
 
 	while(*msn_list){
 		msn_list = &(*msn_list)->next;
 	}
 
 	new_node = malloc(sizeof(struct msn_node_t));
-	if(new_node == NULL)
+	if(new_node == NULL){
+		DBG("malloc for new_node failed\n");
 		return NULL;
+	}
 
 	memset(new_node, 0, sizeof(struct msn_node_t));
 	/* encrypt msn */
@@ -207,4 +212,15 @@ void msn_release(struct msn_node_t *msn_list)
 		free(msn_list);
 		msn_list = next;
 	}
+}
+
+int create_msn_db(const char *device_msn, const char *filename)
+{
+	struct msn_node_t *root = NULL;
+	if(filename == NULL)
+		filename = DEFAULT_MSN_DB;
+	if(RC4_encrypt_and_add_msn(&root, device_msn) == NULL){
+		return -1;
+	}
+	return write_msn_to_file(root, filename);
 }

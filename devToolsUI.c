@@ -112,6 +112,7 @@ snprintf(MessageBoxBuff,MAX_STRING,TEXT(message),##args);\
 MessageBox(hwndMain,MessageBoxBuff,szAppName,MB_ICONERROR);\
 }while(0) 
 	
+#include "src/event.c"
 /*user message definition which is not conflict with "devToolsUI_private.h"*/
 #define WM_CREATE_PROGRESS_BAR		(WM_USER+110)
 #define WM_DESTROY_PROGRESS_BAR		(WM_USER+111)
@@ -697,11 +698,21 @@ static int verify_msn(const char *ip, const char *msn_db)
 		return retval;
 	
 	memset(msn, 0, 20);
-	if(retval = read_msn_from_file(MSN_TMP_FILE, msn))
+	if(retval = read_msn_from_file(MSN_TMP_FILE, msn)){
+		event_record(EV_NETWORK_ERROR, retval, NULL);
 		return retval;
+	}
+	event_record(EV_VERIFY_MSN, 0, msn);
 	
-	if((msn_list = msn_open(msn_db)) == NULL) return EC_MSN_DB_LOST;
+	if((msn_list = msn_open(msn_db)) == NULL){
+		event_record(EV_MSN_DB_LOST, 0 , msn_db);
+		return EC_MSN_DB_LOST;
+	}
 	retval = msn_in_list(msn_list, msn) == 0 ? 1 : 0;	
+	if(retval)
+		event_record(EV_MSN_NOT_MATCH, 0, msn);
+	else
+		event_record(EV_MSN_MATCH, 0, msn);
 	msn_release(msn_list);
 	/* delete tmp msn file */
 	remove(MSN_TMP_FILE);	
@@ -1099,6 +1110,10 @@ static inline BOOL parse_ini_file(const char *file)
 	rescue_image = iniparser_getstring(ini_config,"Options:rescue_image",NULL);
 	if(ip_list != NULL)
 		parse_ip_list(ip_list);
+	else{
+		ini_file_info.ip_should_flash = 1;
+		strcpy(ini_file_info.ip[0], "10.10.0.12");
+	}
 	if(image && strlen(image) < MAX_PATH)
 		strcpy(ini_file_info.name_of_image,image);
 	if(rescue_image && strlen(rescue_image) < MAX_PATH)
@@ -2577,7 +2592,11 @@ static int linux_init(const char *ip, const char *image)
 	{
 		snprintf(error_info,ERROR_INFO_MAX,"Linux init error.");
 		snprintf(error_msg,ERROR_INFO_MAX,"Linux init error.Error code is %s.",get_error_info(retval));		
+		event_record(EV_INIT_ERROR, retval, (void *)ip);
 	}
+	else
+		event_record(EV_INIT_SUCCESS, retval, (void *)ip);
+
 	return retval;
 }
 
@@ -2646,11 +2665,13 @@ start:
 		if(Button_GetCheck(hwndCheckBoxUserdata) == BST_UNCHECKED)
 		{
 			log_print("burnpartition() : partition_selected = 0x%04x\n",partition_selected);
+			event_record(EV_BURNPARTITION, partition_selected, NULL);
 			retval = burnpartition(partition_selected);
 		}
 		else
 		{
 			log_print("burnImage() called.\n"); 
+			event_record(EV_BURNIMAGE, 0, NULL);
 			retval = burnImage();
 		}		
 
@@ -2667,6 +2688,7 @@ start:
 		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
 		{		
 			MessageBox(hwndMain,"Upgrade user data failed,Force to download(Notice:that will wipe user data).",szAppName,MB_ICONINFORMATION);
+			event_record(EV_UPGRADE_FAILED, 0, NULL);
 			dump_time();
 			log_print("error code EC_USERDATA_UPGRADE_FAIL catched,Force to download.\n");
 			/*Select Yes,force to download by invoke burnpartition*/
@@ -2852,10 +2874,13 @@ static void linux_download_complete_cb(int retval,void *private_data)
 		dump_time();
 		log_print("linux download success.\n");
 		SetWindowText(hwndInfo,"Complete");
+		event_record(EV_COMPLETE, 0, NULL);
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
-	else
+	else{
+		event_record(EV_ERROR, retval, NULL);
 		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
+	}
 	
 	g_processing = FALSE;
 	update_ui_resources(TRUE);	
@@ -3087,6 +3112,7 @@ static BOOL ProcessLinuxCommand(WPARAM wParam, LPARAM lParam)
 		return OnBtnBrowser();		
 	}
 	else if(hwnd == hwndLinBtnDown){
+		event_record(EV_UPGRADE, 0, NULL);
 		log_print("\n");
 		dump_time();
 		log_print("button LinBtnDown clicked.\n");
@@ -3788,6 +3814,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         return 0;
     }
 
+    if(event_recorder_init() != 0){
+        ExitDebugConsole();
+        return 0;
+    }
+
     /* Unication Dev Tools main window init */
     if (InitMainWindow() == FALSE)
     {
@@ -3820,6 +3851,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     UpdateWindow(hwndMain);	
     /* Start the message loop */
 	atexit(cleanup);
+	event_record(EV_START, 0, NULL);
     while ((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
     {
         if (bRet == -1)
@@ -3845,6 +3877,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     /* Receive the WM_QUIT message, release mutex and return the exit code to the system */
     CloseHandle(hMutex);
     ExitDebugConsole();
+    event_recorder_exit();
 
     return msg.wParam;
 }

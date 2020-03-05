@@ -23,7 +23,7 @@
 
 # config varibles
 PROJECT=$(strip G4_BBA)
-VERSION=v00p01f
+VERSION=v00p01g
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
@@ -53,7 +53,7 @@ LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./
 # build target and dependency definitions
 TARGET_DEV = UniDevTools.exe
 TARGET_LIMITED = UniDevLimitedTools.exe
-TARGET_MAINTAIN = UniMaintainTools_encrypt.exe
+TARGET_MAINTAIN = Unication_Device_Upgrade.exe
 TARGET_PRODUCTION = UniNandFlashProgramming.exe
 TARGET_MSN_ENCRYPT = UniMSNEncryptTool.exe
 TARGET_MSN_LIB = libMSN.dll

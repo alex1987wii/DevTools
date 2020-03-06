@@ -47,10 +47,11 @@ int event_record(int ev_type, int ev_code, void *ev_value)
 	static char delim = ' ';
 	GetLocalTime(&l_time);
 	/* write local time */
-	int len = snprintf(line_buffer, BUFSIZ, "%04d/%02d/%02d\t%02d:%02d:%02d%c",
+	int len = snprintf(line_buffer, BUFSIZ, "%04d/%02d/%02d%c%02d:%02d:%02d%c",
 			l_time.wYear,
 			l_time.wMonth,
 			l_time.wDay,
+			delim,
 			l_time.wHour,
 			l_time.wMinute,
 			l_time.wSecond,

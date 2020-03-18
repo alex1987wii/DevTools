@@ -279,7 +279,7 @@ struct _error_code_info ui_error_code_info[] = {
 	{EC_INI_RESCUE_IMAGE_INVALID,"Ini file error,rescue_image invalid.","Ini file error."},
 	{EC_INI_RESCUE_IMAGE_INCOMPATIBLE,"Ini file error,rescue_image incompatible.","Ini file error."},
 	{EC_NO_PARTITION_SELECTED,"Error! No partition selected.","Error! No partition selected."},
-	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Timeout."},
+	{EC_WAIT_REBOOT_TIMEOUT,"Wait for reboot timeout,please try it again.","Waiting for reboot timeout.Try it again."},
 	{EC_CRC_ERROR, "CRC check error", "CRC check error"},
 	{EC_MSN_DB_LOST, "MSN db file error.", "MSN db file error."},
 	{EC_MSN_NOT_MATCH, "Series number is not registered, please contact below email to verify your registered information on web, thanks.\r\nunication.cs@gmail.com", "Series number is not registered."},
@@ -2687,7 +2687,7 @@ start:
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
 		{		
-			MessageBox(hwndMain,"Upgrade user data failed,Force to download(Notice:that will wipe user data).",szAppName,MB_ICONINFORMATION);
+			//MessageBox(hwndMain,"Upgrade user data failed,Force to download(Notice:that will wipe user data).",szAppName,MB_ICONINFORMATION);
 			event_record(EV_UPGRADE_FAILED, 0, NULL);
 			dump_time();
 			log_print("error code EC_USERDATA_UPGRADE_FAIL catched,Force to download.\n");
@@ -2878,6 +2878,8 @@ static void linux_download_complete_cb(int retval,void *private_data)
 		MessageBox(hwndMain,"Complete",szAppName,MB_ICONINFORMATION);
 	}
 	else{
+		if((retval & 0xffff) == 0xfc59) /* LOW POWER */
+			event_record(EV_LOW_POWER, 0, NULL);
 		event_record(EV_ERROR, retval, NULL);
 		SendMessage(hwndMain,WM_ERROR,(WPARAM)retval,0);
 	}

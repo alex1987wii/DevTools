@@ -77,6 +77,7 @@ int event_record(int ev_type, int ev_code, void *ev_value)
 		case EV_BURNIMAGE:
 		case EV_UPGRADE_FAILED:
 		case EV_COMPLETE:
+		case EV_LOW_POWER:
 			len += snprintf(line_buffer + len, BUFSIZ - len, "%#x\n", ev_type);
 			//snprintf(line_buffer, BUFSIZ, "%#x,,,\n", ev_type);
 			break;

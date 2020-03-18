@@ -17,6 +17,7 @@ enum{
 	EV_UPGRADE_FAILED,
 	EV_ERROR,
 	EV_COMPLETE,
+	EV_LOW_POWER,
 };
 
 #define EVENT_FILE	"event.txt"

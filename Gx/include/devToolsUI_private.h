@@ -86,7 +86,7 @@ struct _error_code_info
     {0xFC54, "The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance.","Operation failed."},             // FC54
     
     {0xFC58, "The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance.","Operation failed."},         // FC58
-    {0xFC59, "Your battery is too low to update your target. Please charge target then try again.","Low battery."},   // FC59
+    {0xFC59, "Low power,make sure battary have enough power.","Low power,make sure battary have enough power."},   // FC59
     {0xFC5A, "The update installer operation is unsuccessful. Please try again later. If same error occurs again, please contact your support personnel for assistance.","Operation failed."},     // FC5A
    
 

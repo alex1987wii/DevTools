@@ -1734,7 +1734,7 @@ static void InitLinuxWindow(void)
     relative_x += H_GAPS * 2;
     relative_y += V_GAPS + HEIGHT_TAG;
 #ifdef MAINTAINMENT
-	readme = TEXT("1. Connect Device with PC via USB cable.\n2. Press Upgrade Button and wait until it finished.\n3. If any error occurs during upgrading,please reconnect device and re-open this tool to try it again.\n4.Don't pull off the USB cable during process.\n5.Target will reboot when upgrade complete.");
+	readme = TEXT("1. Use Unication PPS Software update profile first, otherwise, update may fail.\n2. If any error occurs during upgrading,please reconnect device and re-open this tool to try it again.\n3.Don't pull off the USB cable during process.\n4.Target will reboot when upgrade complete.");
 #else
 	readme = project_target;
 #endif
@@ -2687,10 +2687,17 @@ start:
 #ifdef MAINTAINMENT
 		if(retval == 0xFDBB && Button_GetCheck(hwndCheckBoxUserdata) == BST_CHECKED)/*EC_USERDATA_UPGRADE_FAIL*/
 		{		
-			//MessageBox(hwndMain,"Upgrade user data failed,Force to download(Notice:that will wipe user data).",szAppName,MB_ICONINFORMATION);
 			event_record(EV_UPGRADE_FAILED, 0, NULL);
 			dump_time();
-			log_print("error code EC_USERDATA_UPGRADE_FAIL catched,Force to download.\n");
+			log_print("error code EC_USERDATA_UPGRADE_FAIL catched.\n");
+
+			if(IDYES != MessageBox(hwndMain,"Upgrade userdata failed. Mandantory update will make userdata lost, and if not, we can't guarantee the stability of the system. Mandantory update or not?",szAppName,MB_YESNO)){
+				event_record(EV_USERDATA_ERROR_SKIP, 0, NULL);
+				log_print("USERDATA_ERROR_SKIP is selected.\n");
+				return 0; /* return as normal exit */
+			}
+			event_record(EV_USERDATA_ERROR_MANDATORY, 0, NULL);
+			log_print("USERDATA_ERROR_MANDATORY is selected.\n");
 			/*Select Yes,force to download by invoke burnpartition*/
 			transfer_start();			
 		#ifdef U3_LIB

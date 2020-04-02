@@ -20,4 +20,9 @@
 | 0x300d     | EV_ERROR           | 烧录或更新出错|
 | 0x300e     | EV_COMPLETE        | 烧录或更新（成功）完成|  
 | 0x300f     | EV_LOW_POWER       | 电池电量过低 |
+| 0x3010     | EV_USERDATA_ERROR_SKIP   | 在userdata更新失败时，用户选择了不进行强制更新 |
+| 0x3011     | EV_USERDATA_ERROR_MANDATORY | 在userdata更新失败时，用户选择了强制更新 |
+
 4. 文件清理工作，遵循谁创建谁管理谁清除的原则，以免出现混乱。目前烧录工具会在tmp目录下生成临时解密镜像文件以及从target端下载的msn序号文件，会在适当的时机删除。
+
+5. 修改userdata分区更新失败时弹窗提示让用户选择是否强制更新。

@@ -3783,13 +3783,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 #ifdef MAINTAINMENT
   if(_access("DLL",0))
    {
-		  MessageBox(NULL,TEXT("Tool package broken,please re-install this tool."),szAppName,MB_ICONERROR);
+		  MessageBox(NULL,TEXT("Tool package incomplete,DLL lost."),szAppName,MB_ICONERROR);
 		   return 0;
    }
 /*
    if(_access("sys",0))
    {
-		   MessageBox(NULL,TEXT("sys lost"),szAppName,MB_ICONERROR);
+		   MessageBox(NULL,TEXT("Tool package incomplete,sys lost"),szAppName,MB_ICONERROR);
 		   return 0;
    } */
 #endif

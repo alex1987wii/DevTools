@@ -2569,7 +2569,7 @@ static int linux_init(const char *ip, const char *image)
 		snprintf(error_info,ERROR_INFO_MAX,"image not exsit");
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		error_code = EC_INI_IMAGE_NOT_EXSIT;
-		return error_code;
+		return EC_INI_IMAGE_NOT_EXSIT;
 	}	
 	/*make WinUpgradeLibInit run in backgroud_func*/
 	
@@ -2738,7 +2738,7 @@ static int spl_init(void)
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",ini_file_info.name_of_rescue_image);
 		error_code = EC_INI_RESCUE_IMAGE_NOT_EXSIT;
-		return error_code;
+		return EC_INI_RESCUE_IMAGE_NOT_EXSIT;
 	}
 	return 0;
 }
@@ -2805,7 +2805,7 @@ static int mfg_init(void)
 		snprintf(error_info,ERROR_INFO_MAX,"%s not exsit.",image);
 		snprintf(error_msg,ERROR_INFO_MAX,"%s not exsit.",image);
 		error_code = EC_INI_IMAGE_NOT_EXSIT;
-		return error_code;
+		return EC_INI_IMAGE_NOT_EXSIT;
 	}
 	dump_time();
 	log_print("burnMFGinit() : image = %s\n",image);

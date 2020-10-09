@@ -694,19 +694,24 @@ static int verify_msn(const char *ip, const char *msn_db)
 	unsigned char msn[20];
 	struct msn_node_t *msn_list;
 	/* get msn from target */		
-	if(retval = upload_file(ip, MSN_TMP_FILE, MSN_CAL))
+#ifdef	U3_LIB
+	if (retval = file_upload(ip, MSN_TMP_FILE, MSN_CAL))
+#else
+	if( retval = upload_file(ip, MSN_TMP_FILE, MSN_CAL))
+#endif
 		return retval;
 	
 	memset(msn, 0, 20);
 	if(retval = read_msn_from_file(MSN_TMP_FILE, msn)){
 		event_record(EV_NETWORK_ERROR, retval, NULL);
-		return retval;
+		goto out;
 	}
 	event_record(EV_VERIFY_MSN, 0, msn);
 	
 	if((msn_list = msn_open(msn_db)) == NULL){
 		event_record(EV_MSN_DB_LOST, 0 , msn_db);
-		return EC_MSN_DB_LOST;
+		retval = EC_MSN_DB_LOST;
+		goto out;
 	}
 	retval = msn_in_list(msn_list, msn) == 0 ? 1 : 0;	
 	if(retval)
@@ -714,6 +719,7 @@ static int verify_msn(const char *ip, const char *msn_db)
 	else
 		event_record(EV_MSN_MATCH, 0, msn);
 	msn_release(msn_list);
+out:
 	/* delete tmp msn file */
 	remove(MSN_TMP_FILE);	
 	return retval;

@@ -22,8 +22,8 @@
 #  All rights reserved
 
 # config varibles
-PROJECT=$(strip G4_BBA)
-VERSION=v00p01g
+PROJECT=$(strip U3)
+VERSION=v00p01h
 valid_proj=AD6900_BBA U3 U3_2ND U4 U4_BBA G4_BBA REPEATER_BBA M2 BR01 BR01_2ND
 ifeq ($(strip $(foreach pro,$(valid_proj),$(shell [ "$(PROJECT)" = "$(pro)" ] && echo "$(PROJECT)" ))),)
     $(warning we only support: )
@@ -51,23 +51,25 @@ CFLAGS  = -DNDEBUG -DCONFIG_PROJECT_$(PROJECT) -DVERSION=\"$(VERSION)\" -DFT_WIN
 LDFLAGS = -lcomctl32 -mwindows -lsetupapi -lWs2_32 -L./$(LIB)/lib -lupgrade -L./lib -liniparser
 
 # build target and dependency definitions
-TARGET_DEV = UniDevTools.exe
-TARGET_LIMITED = UniDevLimitedTools.exe
-TARGET_MAINTAIN = Unication_Device_Upgrade.exe
-TARGET_PRODUCTION = UniNandFlashProgramming.exe
-TARGET_MSN_ENCRYPT = UniMSNEncryptTool.exe
-TARGET_MSN_LIB = libMSN.dll
-TARGET_MSN_INCLUDE = include/rc4.h include/msn.h
-WIN_UTIL_PATH=./output/$(PROJECT)
-UTILS=./$(LIB)/lib/libupgrade.dll
+TARGET_DEV := UniDevTools.exe
+TARGET_LIMITED := UniDevLimitedTools.exe
+TARGET_MAINTAIN := Unication_Device_Upgrade.exe
+TARGET_PRODUCTION := UniNandFlashProgramming.exe
+TARGET_MSN_ENCRYPT := UniMSNEncryptTool.exe
+TARGET_MSN_LIB := libMSN.dll
+TARGET_MSN_INCLUDE := include/rc4.h include/msn.h
+WIN_UTIL_PATH := ./output/$(PROJECT)
+UTILS := ./$(LIB)/lib/libupgrade.dll
 
-TARGETS= $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED) $(TARGET_MSN_ENCRYPT) $(TARGET_MSN_LIB)
+TARGETS := $(TARGET_MAINTAIN) $(TARGET_DEV) $(TARGET_PRODUCTION) $(TARGET_LIMITED) $(TARGET_MSN_ENCRYPT) $(TARGET_MSN_LIB)
 
 OBJS= ./src/msn.o ./src/rc4.o
 
 DEPS = devToolsRes.h
 
 all: clean ./lib/libiniparser.a $(TARGETS) install
+
+$(OBJS): CFLAGS += -DPORJECT=\"$(shell echo $(PROJECT) | tr A-Z a-z)\"
 
 ./lib/libiniparser.a:./src/dictionary.o ./src/iniparser.o
 	[ -d "lib" ] || mkdir lib
@@ -149,6 +151,7 @@ install:prepare_dir
 	cp -rf $(TARGET_MSN_ENCRYPT)  $(WIN_UTIL_PATH)/$(basename $(TARGET_MAINTAIN))/
 	cp -rf $(TARGET_MSN_LIB) $(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))/
 	cp -rf $(TARGET_MSN_INCLUDE) $(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))/
+	cp -rf res/event.md $(WIN_UTIL_PATH)/$(basename $(TARGET_MSN_LIB))/
 	cp -rf readme_for_production.txt $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/readme.txt
 	cp -rf for_mfg_file.ini $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/
 	cp -rf $(UTILS) $(WIN_UTIL_PATH)/$(basename $(TARGET_PRODUCTION))/

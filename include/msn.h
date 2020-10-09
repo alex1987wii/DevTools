@@ -41,7 +41,12 @@ struct msn_header_t{
 #define offset_of(type, member)	((size_t)&((type *)0)->member)
 
 
+#if defined(CONFIG_PROJECT_U3) || defined(CONFIG_PROJECT_U3_2ND) || defined(CONFIG_PROJECT_U3_3RD)
+#define MSN_LEN		11
+#else
 #define MSN_LEN		10
+#endif
+
 struct msn_node_t{
 	struct msn_node_t *next;
 	unsigned char msn[MSN_LEN];
